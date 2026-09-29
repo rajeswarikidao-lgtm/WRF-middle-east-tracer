@@ -39,6 +39,9 @@
   USE module_dry_dep_driver
   USE module_emissions_driver
   USE module_input_tracer, only: set_tracer
+! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
+  USE module_input_tracer, only: set_isotope_tracer
+! ===== added by Rajeswari : END =====
   USE module_wetscav_driver, only: wetscav_driver
   USE module_wetdep_ls, only:wetdep_ls
   USE module_uoc_dustwd ! Claudia, 3 April 2014  [mklose 03082015]
@@ -261,6 +264,9 @@
       INTEGER                         :: astat
       INTEGER                         :: num_irr_diag
       INTEGER                         :: ksubt
+! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
+      INTEGER                         :: tr_conv_wetscav
+! ===== added by Rajeswari : END =====
 
       REAL :: chem_minval, dtstepc
 
@@ -663,6 +669,10 @@
        CALL wrf_debug(15,'tracer mode: 8 tracers')
     CASE (TRACER_TEST3)
        CALL wrf_debug(15,'tracer mode: 10 tracers')
+! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
+    CASE (ISOTOPE_TRACER)
+       CALL wrf_debug(15,'tracer mode: 2 radioactive point-source isotope tracers')
+! ===== added by Rajeswari : END =====
      CASE DEFAULT
        CALL wrf_debug(15,'calling chem_opt=? from chem_driver')
    END SELECT tracer_select
@@ -1180,6 +1190,10 @@
         endif
         if (config_flags%tracer_opt > 0)then
         call wrf_debug(15,'calling conv transport for tracers')
+! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
+        tr_conv_wetscav = config_flags%conv_tr_wetscav
+        if (config_flags%tracer_opt == ISOTOPE_TRACER) tr_conv_wetscav = config_flags%iso_conv_wetscav
+! ===== added by Rajeswari : END =====
         call grelldrvct(grid%DT,ktau,grid%DX,                    &
              rho,grid%RAINCV_B,tracer,                               &
              U_phy,V_phy,t_phy,moist,dz8w,                                            &
@@ -1191,7 +1205,10 @@
              grid%wd_cvasoa_cu, grid%wd_cvbsoa_cu, grid%wd_asoa_cu, grid%wd_bsoa_cu,  &
              grid%k22_shallow,grid%kbcon_shallow,grid%ktop_shallow,grid%xmb_shallow,  &
              config_flags%ishallow,num_moist,0,num_tracer,0,config_flags%tracer_opt,  &
-             config_flags%conv_tr_wetscav,config_flags%conv_tr_aqchem,                &
+! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
+! original line:  config_flags%conv_tr_wetscav,config_flags%conv_tr_aqchem,   &
+             tr_conv_wetscav,config_flags%conv_tr_aqchem,                             &
+! ===== added by Rajeswari : END =====
              ids,ide, jds,jde, kds,kde,                                               &
              ims,ime, jms,jme, kms,kme,                                               &
              its,ite,jts,jte,kts,k_end)
@@ -1786,6 +1803,24 @@ end if !Chemistry time step check
                        zmid,grid%ht,ids,ide, jds,jde, kds,kde,  & ! domain dims
                                ims,ime, jms,jme, kms,kme,       & ! memory dims
                                its,ite, jts,jte, kts,kte )
+! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
+    CASE (ISOTOPE_TRACER)
+       CALL wrf_debug(15,'tracer mode: isotope decay + point-source release')
+       call set_isotope_tracer(grid%dt, real(curr_secs), tracer, num_tracer,         &
+              rri, dz8w, grid%dx, grid%dy, grid%msftx, grid%msfty,                   &
+              config_flags%iso1_half_life_h, config_flags%iso1_i,                    &
+              config_flags%iso1_j, config_flags%iso1_k,                              &
+              config_flags%iso1_pulse_rate, config_flags%iso1_pulse_start_h,         &
+              config_flags%iso1_pulse_end_h, config_flags%iso1_cont_rate,            &
+              config_flags%iso1_cont_start_h,                                        &
+              config_flags%iso2_half_life_h, config_flags%iso2_i,                    &
+              config_flags%iso2_j, config_flags%iso2_k,                              &
+              config_flags%iso2_pulse_rate, config_flags%iso2_pulse_start_h,         &
+              config_flags%iso2_pulse_end_h, config_flags%iso2_cont_rate,            &
+              config_flags%iso2_cont_start_h,                                        &
+              ims,ime, jms,jme, kms,kme,                                             &
+              its,ite, jts,jte, kts,kte )
+! ===== added by Rajeswari : END =====
    END SELECT tracer2
 
 !-- set upper boundary condition

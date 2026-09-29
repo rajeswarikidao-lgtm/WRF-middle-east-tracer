@@ -2136,6 +2136,11 @@ state   real    tr18_6     ikjftb  tracer        1         -     i8rhusdf=(bdy_i
 state   real    tr18_7     ikjftb  tracer        1         -     i8rhusdf=(bdy_interp:dt)    "tr18_7"         "tr18_7"          -
 state   real    tr18_8     ikjftb  tracer        1         -     i8rhusdf=(bdy_interp:dt)    "tr18_8"         "tr18_8"          -
 state   real    tr18_9     ikjftb  tracer        1         -     i8rhusdf=(bdy_interp:dt)    "tr18_9"         "tr18_9"          -
+# ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
+# activity per kg of dry air (same basis as chem aerosol ug/kg-dryair); Bq m-3 = value * dry-air density
+state   real    isotope1   ikjftb  tracer        1         -     i8rhusdf=(bdy_interp:dt)    "isotope1"       "Radioactive isotope 1 (site 1) activity mixing ratio"   "Bq kg-1"
+state   real    isotope2   ikjftb  tracer        1         -     i8rhusdf=(bdy_interp:dt)    "isotope2"       "Radioactive isotope 2 (site 2) activity mixing ratio"   "Bq kg-1"
+# ===== added by Rajeswari : END =====
 
 # MAD-WRF
 state   real    tr_qc   ikjftb  tracer        1         -     irhusdf=(bdy_interp:dt)    "tr_qcloud"      "Tracer with the liquid content" "Kg Kg-1"
@@ -4178,6 +4183,31 @@ package   tracer_smoke  tracer_opt==1       -             tracer:smoke
 package   tracer_test1  tracer_opt==2       -             tracer:tr17_1,tr17_2,tr17_3,tr17_4,tr17_5,tr17_6,tr17_7,tr17_8
 package   tracer_test2  tracer_opt==3       -             tracer:tr17_1,tr17_2,tr17_3,tr17_4,tr17_5,tr17_6,tr17_7,tr17_8
 package   tracer_test3  tracer_opt==4       -             tracer:tr17_1,tr17_2,tr17_3,tr17_4,tr17_5,tr17_6,tr17_7,tr17_8,tr18_1,tr18_2
+# ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
+package   isotope_tracer  tracer_opt==11    -             tracer:isotope1,isotope2
+# &chem controls. half_life_h <= 0 : no decay (advection only). Rates in Bq per hour.
+# i/j = 1-based grid indices, k = model level (1 = lowest). Rates 0 -> site off.
+rconfig   real      iso1_half_life_h     namelist,chem   max_domains   0.     rh   "iso1_half_life_h"     "isotope1 half-life, <=0 no decay"   "h"
+rconfig   integer   iso1_i               namelist,chem   max_domains   1      rh   "iso1_i"               "isotope1 release i index"           ""
+rconfig   integer   iso1_j               namelist,chem   max_domains   1      rh   "iso1_j"               "isotope1 release j index"           ""
+rconfig   integer   iso1_k               namelist,chem   max_domains   1      rh   "iso1_k"               "isotope1 release model level"       ""
+rconfig   real      iso1_pulse_rate      namelist,chem   max_domains   0.     rh   "iso1_pulse_rate"      "isotope1 release rate in pulse"     "Bq h-1"
+rconfig   real      iso1_pulse_start_h   namelist,chem   max_domains   0.     rh   "iso1_pulse_start_h"   "isotope1 pulse start from sim start" "h"
+rconfig   real      iso1_pulse_end_h     namelist,chem   max_domains   0.     rh   "iso1_pulse_end_h"     "isotope1 pulse end from sim start"   "h"
+rconfig   real      iso1_cont_rate       namelist,chem   max_domains   0.     rh   "iso1_cont_rate"       "isotope1 continuous release rate"   "Bq h-1"
+rconfig   real      iso1_cont_start_h    namelist,chem   max_domains   0.     rh   "iso1_cont_start_h"    "isotope1 continuous start"          "h"
+rconfig   real      iso2_half_life_h     namelist,chem   max_domains   0.     rh   "iso2_half_life_h"     "isotope2 half-life, <=0 no decay"   "h"
+rconfig   integer   iso2_i               namelist,chem   max_domains   1      rh   "iso2_i"               "isotope2 release i index"           ""
+rconfig   integer   iso2_j               namelist,chem   max_domains   1      rh   "iso2_j"               "isotope2 release j index"           ""
+rconfig   integer   iso2_k               namelist,chem   max_domains   1      rh   "iso2_k"               "isotope2 release model level"       ""
+rconfig   real      iso2_pulse_rate      namelist,chem   max_domains   0.     rh   "iso2_pulse_rate"      "isotope2 release rate in pulse"     "Bq h-1"
+rconfig   real      iso2_pulse_start_h   namelist,chem   max_domains   0.     rh   "iso2_pulse_start_h"   "isotope2 pulse start from sim start" "h"
+rconfig   real      iso2_pulse_end_h     namelist,chem   max_domains   0.     rh   "iso2_pulse_end_h"     "isotope2 pulse end from sim start"   "h"
+rconfig   real      iso2_cont_rate       namelist,chem   max_domains   0.     rh   "iso2_cont_rate"       "isotope2 continuous release rate"   "Bq h-1"
+rconfig   real      iso2_cont_start_h    namelist,chem   max_domains   0.     rh   "iso2_cont_start_h"    "isotope2 continuous start"          "h"
+# convective wet scavenging of the isotope tracers only (0 = off, 1 = on); chem_opt species keep conv_tr_wetscav
+rconfig   integer   iso_conv_wetscav     namelist,chem   max_domains   0      rh   "iso_conv_wetscav"     "isotope tracer convective wet scavenging" ""
+# ===== added by Rajeswari : END =====
 
 # the following arrays only needed for aircraft emissions options
 package   aircraft1      aircraft_emiss_opt==1             -       emis_aircraft:eac_no,eac_co,eac_so2,eac_ch4

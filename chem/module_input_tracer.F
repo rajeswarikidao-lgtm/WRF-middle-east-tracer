@@ -36,6 +36,9 @@ MODULE module_input_tracer
 USE module_input_tracer_data
 #if ( WRF_CHEM == 1 )
 USE module_state_description, only:tracer_smoke,tracer_test1,tracer_test2,param_first_scalar,p_tr17_1,p_tr17_2,p_tr17_3,p_tr17_4,p_tr17_5,p_tr17_6,p_tr17_7,p_tr17_8
+! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
+USE module_state_description, only:p_isotope1,p_isotope2
+! ===== added by Rajeswari : END =====
 #else
 USE module_state_description, only:tracer_test1,tracer_test2,param_first_scalar,p_tr17_1,p_tr17_2,p_tr17_3,p_tr17_4,p_tr17_5,p_tr17_6,p_tr17_7,p_tr17_8
 #endif
@@ -522,6 +525,81 @@ CONTAINS
 
  ENDIF   ! ktau  
    END SUBROUTINE set_tracer
+! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
+!-----------------------------------------------------------------------
+! set_isotope_tracer : called every time step from chem_driver when
+! tracer_opt = 11. Tracer unit: Bq per kg of dry air.
+! For each isotope:
+!  (1) decay over the tile: A = A*exp(-ln2*dt/(T_half*3600)); T_half<=0 -> none
+!  (2) release at cell (i,k,j):
+!        pulse_start_h <= t < pulse_end_h  -> Q = pulse_rate      [Bq/h]
+!        else t >= cont_start_h            -> Q = cont_rate       [Bq/h]
+!        else                              -> Q = 0
+!      dA [Bq/kg] = Q*dt/3600 / M_air,
+!      M_air [kg] = (dx*dy/(msftx*msfty)) * dz8w / alt   (dry air in the cell)
+!      Only the tile that owns the cell adds it (MPI/OpenMP safe).
+! t = hours since simulation start (curr_secs from chem_driver).
+!-----------------------------------------------------------------------
+   SUBROUTINE set_isotope_tracer(dtstep, curr_secs, tracer, num_tracer,        &
+                 alt, dz8w, dx, dy, msftx, msfty,                            &
+                 hl1, i1, j1, k1, prate1, pst1, pend1, crate1, cst1,         &
+                 hl2, i2, j2, k2, prate2, pst2, pend2, crate2, cst2,         &
+                 ims,ime, jms,jme, kms,kme,                                  &
+                 its,ite, jts,jte, kts,kte )
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: num_tracer
+      INTEGER, INTENT(IN) :: ims,ime, jms,jme, kms,kme
+      INTEGER, INTENT(IN) :: its,ite, jts,jte, kts,kte
+      REAL,    INTENT(IN) :: dtstep, curr_secs, dx, dy
+      REAL,    INTENT(IN) :: hl1, prate1, pst1, pend1, crate1, cst1
+      REAL,    INTENT(IN) :: hl2, prate2, pst2, pend2, crate2, cst2
+      INTEGER, INTENT(IN) :: i1, j1, k1, i2, j2, k2
+      REAL, DIMENSION(ims:ime,kms:kme,jms:jme,num_tracer), INTENT(INOUT) :: tracer
+      REAL, DIMENSION(ims:ime,kms:kme,jms:jme),            INTENT(IN)    :: alt, dz8w
+      REAL, DIMENSION(ims:ime,jms:jme),                    INTENT(IN)    :: msftx, msfty
+      REAL :: t_hours
+
+      t_hours = curr_secs / 3600.
+#if ( WRF_CHEM == 1 )
+      CALL decay_and_release(p_isotope1, hl1, i1, j1, k1, prate1, pst1, pend1, crate1, cst1)
+      CALL decay_and_release(p_isotope2, hl2, i2, j2, k2, prate2, pst2, pend2, crate2, cst2)
+#endif
+
+   CONTAINS
+
+      SUBROUTINE decay_and_release(ip, hl, isrc, jsrc, ksrc, prate, pst, pend, crate, cst)
+         INTEGER, INTENT(IN) :: ip, isrc, jsrc, ksrc
+         REAL,    INTENT(IN) :: hl, prate, pst, pend, crate, cst
+         REAL :: decay_factor, rate, air_mass
+
+         IF (ip .lt. param_first_scalar) RETURN      ! species not allocated
+
+!-- (1) radioactive decay
+         IF (hl .gt. 0.) THEN
+            decay_factor = exp( -log(2.) * dtstep / (hl*3600.) )
+            tracer(its:ite,kts:kte,jts:jte,ip) = tracer(its:ite,kts:kte,jts:jte,ip) * decay_factor
+         ENDIF
+
+!-- (2) point-source release
+         rate = 0.
+         IF (t_hours .ge. pst .and. t_hours .lt. pend) THEN
+            rate = prate
+         ELSE IF (t_hours .ge. cst) THEN
+            rate = crate
+         ENDIF
+
+         IF (rate .gt. 0.) THEN
+            IF (isrc .ge. its .and. isrc .le. ite .and.        &
+                jsrc .ge. jts .and. jsrc .le. jte .and.        &
+                ksrc .ge. kts .and. ksrc .le. kte) THEN
+               air_mass = dx*dy/(msftx(isrc,jsrc)*msfty(isrc,jsrc)) * dz8w(isrc,ksrc,jsrc) / alt(isrc,ksrc,jsrc)
+               tracer(isrc,ksrc,jsrc,ip) = tracer(isrc,ksrc,jsrc,ip) + rate*dtstep/3600. / air_mass
+            ENDIF
+         ENDIF
+      END SUBROUTINE decay_and_release
+
+   END SUBROUTINE set_isotope_tracer
+! ===== added by Rajeswari : END =====
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   SUBROUTINE bdy_tracer_value ( trac, trac_b, trac_bt, dt,ic)
                                   

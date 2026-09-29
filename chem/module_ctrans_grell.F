@@ -2038,6 +2038,12 @@ is_moz_chm: if( chemopt == MOZCART_KPP .or. chemopt == T1_MOZCART_KPP .or. &
 
             if (nv.gt.numgas) aq_gas_ratio = 0.5
 
+! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
+! The p_* indices below are chem-array indices. In the tracer call (chemopt = 0)
+! nv indexes the tracer array, so these tests must be skipped, otherwise a tracer
+! whose index equals e.g. p_sulf gets a different scavenging ratio. Tracers: 0.5.
+            if (chemopt > 0) then
+! ===== added by Rajeswari : END =====
             if (nv.eq.p_so4aj) aq_gas_ratio = 1.0
             if (nv.eq.p_nh4aj) aq_gas_ratio = 1.0
             if (nv.eq.p_no3aj) aq_gas_ratio = 1.0
@@ -2046,6 +2052,9 @@ is_moz_chm: if( chemopt == MOZCART_KPP .or. chemopt == T1_MOZCART_KPP .or. &
             if (nv.eq.p_sulf .or. nv.eq.p_seas_1 .or. nv.eq.p_seas_2) aq_gas_ratio=1.
             if (nv.eq.p_seas_3 .or. nv.eq.p_seas_4) aq_gas_ratio=1.
             if (nv.eq.p_bc2 .or. nv.eq.p_oc2) aq_gas_ratio=0.8
+! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
+            endif
+! ===== added by Rajeswari : END =====
             
             if (aq_gas_ratio > 0.0) then
               tr_c(i,k,nv)  = aq_gas_ratio*tr_up(i,k,nv) ! Amount of species cloud + rain water

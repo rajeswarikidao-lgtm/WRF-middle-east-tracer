@@ -1038,7 +1038,10 @@ CONTAINS
 !
 ! only mixing one fire(smoke) scalar array
 !
-       CASE (TRACER_SMOKE,TRACER_TEST1,TRACER_TEST2)
+! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
+! original line:  CASE (TRACER_SMOKE,TRACER_TEST1,TRACER_TEST2)
+       CASE (TRACER_SMOKE,TRACER_TEST1,TRACER_TEST2,ISOTOPE_TRACER)
+! ===== added by Rajeswari : END =====
         CALL wrf_debug(15,'DOING TRACER MIXING, 1 SPECIE ONLY')
          do nv=2,num_tracer
             do k=kts,kte
