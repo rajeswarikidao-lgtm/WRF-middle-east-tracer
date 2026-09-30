@@ -1619,6 +1619,8 @@ state   real   iso         ikjftb   chem        1         -   i0{12}rhusdf=(bdy_
 state   real   hcl         ikjftb   chem        1         -   i0{12}rhusdf=(bdy_interp:dt)  "hcl"           "HCL mixing ratio"         "ppmv"
 state   real   ho          ikjftb   chem        1         -   i0{12}rhusdf=(bdy_interp:dt)  "ho"            "HO mixing ratio"          "ppmv"
 state   real   ho2         ikjftb   chem        1         -   i0{12}rhusdf=(bdy_interp:dt)  "ho2"           "HO2 mixing ratio"         "ppmv"
+# Rajeswari: radionuclide gas species; activity mixing ratio like isotope1/2; must stay before ho2 in the package list so it counts as a gas
+state   real   iodg        ikjftb   chem        1         -   i0{12}rhusdf=(bdy_interp:dt)  "iodg"          "I-131 gas (lumped I2/CH3I) activity mixing ratio"   "Bq kg-1"
 state   real   aro1        ikjftb   chem        1         -   i0{12}rhusdf=(bdy_interp:dt)  "aro1"          "ARO1 mixing ratio"        "ppmv"
 state   real   aro2        ikjftb   chem        1         -   i0{12}rhusdf=(bdy_interp:dt)  "aro2"          "ARO2 mixing ratio"        "ppmv"
 state   real   alk1        ikjftb   chem        1         -   i0{12}rhusdf=(bdy_interp:dt)  "alk1"          "ALK1 mixing ratio"        "ppmv"
@@ -2332,6 +2334,29 @@ state   real   soila       ikjftb   chem        1         -   i0{12}rhusdf=(bdy_
 state   real   nu0         ikjftb   chem        1         -   i0{12}rhusdf=(bdy_interp:dt)  "nu0"           "Aitken mode number"         "#/kg-dryair"
 state   real   ac0         ikjftb   chem        1         -   i0{12}rhusdf=(bdy_interp:dt)  "ac0"           "Accumulation mode number"         "#/kg-dryair"
 state   real   corn        ikjftb   chem        1         -   i0{12}rhusdf=(bdy_interp:dt)  "corn"          "Coarse mode number"        "#/kg-dryair"
+# Rajeswari: radionuclide particle species 
+state   real   iodaj       ikjftb   chem        1         -   i0{12}rhusdf=(bdy_interp:dt)  "iodaj"         "I-131 on accumulation mode aerosol, activity mixing ratio"   "Bq kg-1"
+state   real   iodac       ikjftb   chem        1         -   i0{12}rhusdf=(bdy_interp:dt)  "iodac"         "I-131 on coarse mode aerosol, activity mixing ratio"         "Bq kg-1"
+state   real   csaj        ikjftb   chem        1         -   i0{12}rhusdf=(bdy_interp:dt)  "csaj"          "Cs-137 on accumulation mode aerosol, activity mixing ratio"  "Bq kg-1"
+state   real   csac        ikjftb   chem        1         -   i0{12}rhusdf=(bdy_interp:dt)  "csac"          "Cs-137 on coarse mode aerosol, activity mixing ratio"        "Bq kg-1"
+# Rajeswari: radionuclide diagnostics (rates and accumulated deposition)
+state   real   rn_lossjc      ikj   misc   1   -   rh   "rn_lossjc"      "j-to-coarse coagulation loss rate of j-mode mass"   "s-1"
+state   real   rn_vsetc       ikj   misc   1   -   rh   "rn_vsetc"       "coarse mode mass settling velocity"                 "m s-1"
+state   real   rn_ddep_iodg   ij    misc   1   -   rh   "rn_ddep_iodg"   "accumulated dry deposition of iodg"                 "Bq m-2"
+state   real   rn_ddep_iodaj  ij    misc   1   -   rh   "rn_ddep_iodaj"  "accumulated dry deposition of iodaj"                "Bq m-2"
+state   real   rn_ddep_iodac  ij    misc   1   -   rh   "rn_ddep_iodac"  "accumulated dry deposition of iodac"                "Bq m-2"
+state   real   rn_ddep_csaj   ij    misc   1   -   rh   "rn_ddep_csaj"   "accumulated dry deposition of csaj"                 "Bq m-2"
+state   real   rn_ddep_csac   ij    misc   1   -   rh   "rn_ddep_csac"   "accumulated dry deposition of csac"                 "Bq m-2"
+state   real   rn_wdls_iodg   ij    misc   1   -   rh   "rn_wdls_iodg"   "accumulated large-scale wet deposition of iodg"     "Bq m-2"
+state   real   rn_wdls_iodaj  ij    misc   1   -   rh   "rn_wdls_iodaj"  "accumulated large-scale wet deposition of iodaj"    "Bq m-2"
+state   real   rn_wdls_iodac  ij    misc   1   -   rh   "rn_wdls_iodac"  "accumulated large-scale wet deposition of iodac"    "Bq m-2"
+state   real   rn_wdls_csaj   ij    misc   1   -   rh   "rn_wdls_csaj"   "accumulated large-scale wet deposition of csaj"     "Bq m-2"
+state   real   rn_wdls_csac   ij    misc   1   -   rh   "rn_wdls_csac"   "accumulated large-scale wet deposition of csac"     "Bq m-2"
+state   real   rn_wdcv_iodg   ij    misc   1   -   rh   "rn_wdcv_iodg"   "accumulated convective wet deposition of iodg"      "Bq m-2"
+state   real   rn_wdcv_iodaj  ij    misc   1   -   rh   "rn_wdcv_iodaj"  "accumulated convective wet deposition of iodaj"     "Bq m-2"
+state   real   rn_wdcv_iodac  ij    misc   1   -   rh   "rn_wdcv_iodac"  "accumulated convective wet deposition of iodac"     "Bq m-2"
+state   real   rn_wdcv_csaj   ij    misc   1   -   rh   "rn_wdcv_csaj"   "accumulated convective wet deposition of csaj"      "Bq m-2"
+state   real   rn_wdcv_csac   ij    misc   1   -   rh   "rn_wdcv_csac"   "accumulated convective wet deposition of csac"      "Bq m-2"
 
 # new species for the RACM_SOA_VBS mechanism
 state   real   asoa1j     ikjftb    chem       1         -   i0{12}rhusdf=(bdy_interp:dt)  "asoa1j"       "SOA Anth. org. conc. with  C* value=1    ug/m^3 Acc. mode"      "ug/kg-dryair"
@@ -3979,7 +4004,8 @@ package   racm_esrlsorg_kpp      chem_opt==107                  -            che
 # new scheme for better SOA simulations
 package   racm_soa_vbs_kpp  chem_opt==108                  -         chem:so2,sulf,no2,no,o3,hno3,h2o2,ald,hcho,op1,op2,paa,ora1,ora2,nh3,n2o5,no3,pan,hc3,hc5,hc8,eth,co,ete,olt,oli,tol,xyl,aco3,tpan,hono,hno4,ket,gly,mgly,dcb,onit,csl,iso,co2,ch4,udd,hket,api,lim,dien,macr,hace,ishp,ison,mahp,mpan,nald,sesq,mbo,cvasoa1,cvasoa2,cvasoa3,cvasoa4,cvbsoa1,cvbsoa2,cvbsoa3,cvbsoa4,ho,ho2,so4aj,so4ai,nh4aj,nh4ai,no3aj,no3ai,naaj,naai,claj,clai,asoa1j,asoa1i,asoa2j,asoa2i,asoa3j,asoa3i,asoa4j,asoa4i,bsoa1j,bsoa1i,bsoa2j,bsoa2i,bsoa3j,bsoa3i,bsoa4j,bsoa4i,orgpaj,orgpai,ecj,eci,p25j,p25i,antha,seas,soila,nu0,ac0,corn
 # new scheme for better SOA simulations + ISORROPIA+N2O5+ClNO2  
-package   racm_soa_vbs_het_kpp  chem_opt==100                  -         chem:so2,sulf,no2,no,o3,hno3,h2o2,ald,hcho,op1,op2,paa,ora1,ora2,nh3,n2o5,no3,pan,hc3,hc5,hc8,eth,co,ete,olt,oli,tol,xyl,aco3,tpan,hono,hno4,ket,gly,mgly,dcb,onit,csl,iso,co2,ch4,udd,hket,api,lim,dien,macr,hace,ishp,ison,mahp,mpan,nald,sesq,mbo,cvasoa1,cvasoa2,cvasoa3,cvasoa4,cvbsoa1,cvbsoa2,cvbsoa3,cvbsoa4,hcl,clno2,cl2,fmcl,cl,clo,hocl,ch3cl,ho,ho2,so4aj,so4ai,nh4aj,nh4ai,no3aj,no3ai,naaj,naai,claj,clai,asoa1j,asoa1i,asoa2j,asoa2i,asoa3j,asoa3i,asoa4j,asoa4i,bsoa1j,bsoa1i,bsoa2j,bsoa2i,bsoa3j,bsoa3i,bsoa4j,bsoa4i,orgpaj,orgpai,ecj,eci,caaj,caai,kaj,kai,mgaj,mgai,p25j,p25i,antha,seas,soila,nu0,ac0,corn
+# Rajeswari: iodg added just before ho2 (numgas=p_ho2) so it is a gas; iodaj,iodac,csaj,csac added at the end of the particle list
+package   racm_soa_vbs_het_kpp  chem_opt==100                  -         chem:so2,sulf,no2,no,o3,hno3,h2o2,ald,hcho,op1,op2,paa,ora1,ora2,nh3,n2o5,no3,pan,hc3,hc5,hc8,eth,co,ete,olt,oli,tol,xyl,aco3,tpan,hono,hno4,ket,gly,mgly,dcb,onit,csl,iso,co2,ch4,udd,hket,api,lim,dien,macr,hace,ishp,ison,mahp,mpan,nald,sesq,mbo,cvasoa1,cvasoa2,cvasoa3,cvasoa4,cvbsoa1,cvbsoa2,cvbsoa3,cvbsoa4,hcl,clno2,cl2,fmcl,cl,clo,hocl,ch3cl,ho,iodg,ho2,so4aj,so4ai,nh4aj,nh4ai,no3aj,no3ai,naaj,naai,claj,clai,asoa1j,asoa1i,asoa2j,asoa2i,asoa3j,asoa3i,asoa4j,asoa4i,bsoa1j,bsoa1i,bsoa2j,bsoa2i,bsoa3j,bsoa3i,bsoa4j,bsoa4i,orgpaj,orgpai,ecj,eci,caaj,caai,kaj,kai,mgaj,mgai,p25j,p25i,antha,seas,soila,nu0,ac0,corn,iodaj,iodac,csaj,csac
 # new scheme for better SOA simulations + AQ chem
 package   racm_soa_vbs_aqchem_kpp  chem_opt==109                  -         chem:so2,sulf,no2,no,o3,hno3,h2o2,ald,hcho,op1,op2,paa,ora1,ora2,nh3,n2o5,no3,pan,hc3,hc5,hc8,eth,co,ete,olt,oli,tol,xyl,aco3,tpan,hono,hno4,ket,gly,mgly,dcb,onit,csl,iso,co2,ch4,udd,hket,api,lim,dien,macr,hace,ishp,ison,mahp,mpan,nald,sesq,mbo,cvasoa1,cvasoa2,cvasoa3,cvasoa4,cvbsoa1,cvbsoa2,cvbsoa3,cvbsoa4,ho,ho2,so4aj,so4ai,nh4aj,nh4ai,no3aj,no3ai,naaj,naai,claj,clai,asoa1j,asoa1i,asoa2j,asoa2i,asoa3j,asoa3i,asoa4j,asoa4i,bsoa1j,bsoa1i,bsoa2j,bsoa2i,bsoa3j,bsoa3i,bsoa4j,bsoa4i,orgpaj,orgpai,ecj,eci,p25j,p25i,antha,seas,soila,nu0,ac0,corn,so4cwj,so4cwi,nh4cwj,nh4cwi,no3cwj,no3cwi,nacwj,nacwi,clcwj,clcwi,asoa1cwj,asoa1cwi,asoa2cwj,asoa2cwi,asoa3cwj,asoa2cwi,asoa3cwj,asoa3cwi,asoa4cwj,asoa4cwi,bsoa1cwj,bsoa1cwi,bsoa2cwj,bsoa2cwi,bsoa3cwj,bsoa3cwi,bsoa4cwj,bsoa4cwi,orgpacwj,orgpacwi,eccwj,eccwi,p25cwj,p25cwi,anthcw,seascw,soilcw,nu0cw,ac0cw,corncw
 
@@ -4208,6 +4234,14 @@ rconfig   real      iso2_cont_start_h    namelist,chem   max_domains   0.     rh
 # convective wet scavenging of the isotope tracers only (0 = off, 1 = on); chem_opt species keep conv_tr_wetscav
 rconfig   integer   iso_conv_wetscav     namelist,chem   max_domains   0      rh   "iso_conv_wetscav"     "isotope tracer convective wet scavenging" ""
 # ===== added by Rajeswari : END =====
+# Rajeswari: radionuclide options for chem_opt=100; release sites, rates and half-lives come from the iso1 (I-131) and iso2 (Cs-137) options; all new processes off by default
+rconfig   integer   rn_opt             namelist,chem   max_domains   0      rh   "rn_opt"             "radionuclide species 0=off 1=on"               ""
+rconfig   integer   rn_coag_opt        namelist,chem   max_domains   0      rh   "rn_coag_opt"        "j-to-coarse coagulation transfer 0=off 1=on"   ""
+rconfig   real      rn_coag_factor     namelist,chem   max_domains   1.0    rh   "rn_coag_factor"     "scaling factor for j-to-coarse coag rate"      ""
+rconfig   real      rn_iod_frac_part   namelist,chem   max_domains   0.19   rh   "rn_iod_frac_part"   "fraction of released I-131 put in iodaj"       ""
+rconfig   integer   rn_settle_opt      namelist,chem   max_domains   0      rh   "rn_settle_opt"      "coarse mode settling 0=off 1=on"               ""
+rconfig   real      rn_iodg_vd         namelist,chem   max_domains   0.     rh   "rn_iodg_vd"         "iodg dry deposition velocity"                  "m s-1"
+rconfig   real      rn_init_aj         namelist,chem   max_domains   0.     rh   "rn_init_aj"         "uniform initial iodaj and csaj for tests"      "Bq kg-1"
 
 # the following arrays only needed for aircraft emissions options
 package   aircraft1      aircraft_emiss_opt==1             -       emis_aircraft:eac_no,eac_co,eac_so2,eac_ch4
