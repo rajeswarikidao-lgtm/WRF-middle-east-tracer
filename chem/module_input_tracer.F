@@ -626,4 +626,46 @@ CONTAINS
       RETURN
   END SUBROUTINE bdy_tracer_value
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! ===== added by Rajeswari (radionuclide j->coarse coagulation transfer, Stage A2b) : START =====
+! Rajeswari: moves tagged activity from the j mode to the coarse mode: iodaj->iodac and csaj->csac
+! Rajeswari: amount moved = f*A_j with f = 1-exp(-L*dt*factor), L = rn_lossjc from coagrate_jc [s-1]
+! Rajeswari: host aerosol number and moments are not changed (radionuclide mass is negligible)
+   SUBROUTINE rn_coag_transfer(chem, num_chem, rn_lossjc, dtstep, factor,   &
+                 ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte )
+      USE module_state_description, only: p_iodaj, p_iodac, p_csaj, p_csac, param_first_scalar
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: num_chem
+      INTEGER, INTENT(IN) :: ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte
+      REAL, DIMENSION(ims:ime,kms:kme,jms:jme,num_chem), INTENT(INOUT) :: chem
+      REAL, DIMENSION(ims:ime,kms:kme,jms:jme),          INTENT(IN)    :: rn_lossjc
+      REAL, INTENT(IN) :: dtstep, factor
+      INTEGER :: i, k, j
+      REAL*8  :: x, f, da
+
+! Rajeswari: do nothing if the radionuclide species are not part of this chem_opt
+      IF ( p_iodaj .LT. param_first_scalar .OR. p_iodac .LT. param_first_scalar .OR. &
+           p_csaj  .LT. param_first_scalar .OR. p_csac  .LT. param_first_scalar ) RETURN
+
+      DO j = jts, jte
+        DO k = kts, kte
+          DO i = its, ite
+            x = DBLE(rn_lossjc(i,k,j))*DBLE(dtstep)*DBLE(factor)
+            IF ( x .LE. 0.0D0 ) CYCLE
+! Rajeswari: fraction moved in this step; series form keeps full accuracy for very small x
+            IF ( x .LT. 1.0D-5 ) THEN
+              f = x*(1.0D0 - 0.5D0*x)
+            ELSE
+              f = 1.0D0 - EXP(-x)
+            ENDIF
+            da = f*DBLE(chem(i,k,j,p_iodaj))
+            chem(i,k,j,p_iodaj) = REAL( DBLE(chem(i,k,j,p_iodaj)) - da )
+            chem(i,k,j,p_iodac) = REAL( DBLE(chem(i,k,j,p_iodac)) + da )
+            da = f*DBLE(chem(i,k,j,p_csaj))
+            chem(i,k,j,p_csaj)  = REAL( DBLE(chem(i,k,j,p_csaj))  - da )
+            chem(i,k,j,p_csac)  = REAL( DBLE(chem(i,k,j,p_csac))  + da )
+          END DO
+        END DO
+      END DO
+   END SUBROUTINE rn_coag_transfer
+! ===== added by Rajeswari : END =====
 END MODULE module_input_tracer

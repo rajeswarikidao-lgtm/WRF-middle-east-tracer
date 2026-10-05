@@ -41,6 +41,7 @@
   USE module_input_tracer, only: set_tracer
 ! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
   USE module_input_tracer, only: set_isotope_tracer
+  USE module_input_tracer, only: rn_coag_transfer   ! Rajeswari: Stage A2b
 ! ===== added by Rajeswari : END =====
   USE module_wetscav_driver, only: wetscav_driver
   USE module_wetdep_ls, only:wetdep_ls
@@ -1824,6 +1825,21 @@ end if !Chemistry time step check
               its,ite, jts,jte, kts,kte )
 ! ===== added by Rajeswari : END =====
    END SELECT tracer2
+! ===== added by Rajeswari (radionuclide species, Stage A2b) : START =====
+   IF ( config_flags%rn_opt == 1 ) THEN
+! Rajeswari: test only - uniform starting activity in iodaj and csaj at the first step
+      IF ( ktau == 1 .AND. config_flags%rn_init_aj > 0. ) THEN
+         chem(its:ite,kts:kte,jts:jte,p_iodaj) = config_flags%rn_init_aj
+         chem(its:ite,kts:kte,jts:jte,p_csaj)  = config_flags%rn_init_aj
+      ENDIF
+! Rajeswari: j->coarse coagulation transfer, on chemistry steps only, with the chemistry time step
+      IF ( config_flags%rn_coag_opt == 1 .AND. do_chemstep ) THEN
+         CALL rn_coag_transfer(chem, num_chem, grid%rn_lossjc, dtstepc,                  &
+                 config_flags%rn_coag_factor,                                          &
+                 ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte )
+      ENDIF
+   ENDIF
+! ===== added by Rajeswari : END =====
 
 !-- set upper boundary condition
     if( config_flags%have_bcs_upper )then
