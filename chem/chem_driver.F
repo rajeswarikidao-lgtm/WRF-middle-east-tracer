@@ -1588,6 +1588,7 @@ if ( cam_mam_aerosols ) &
 !
 !   now do aerosols
 !
+        grid%rn_lossjc(its:ite,kts:kte,jts:jte) = 0.   ! Rajeswari: reset j->c coag. rate each step
 	if(config_flags%aerchem_onoff>0)then
 
         call aerosols_driver (grid%id,curr_secs,ktau,grid%dt,grid%ktauc,              &
@@ -1603,6 +1604,7 @@ if ( cam_mam_aerosols ) &
               del_h2so4_gasprod,grid%dvmrdt_sv13d,grid%dvmrcwdt_sv13d,                &
               grid%is_CAMMGMP_used,                                                   &
               grid%ph_aer01, grid%ph_aer02, grid%ph_aer03, grid%ph_aer04,             &
+              grid%rn_lossjc,                                                         &
               ids,ide, jds,jde, kds,kde,                                              &
               ims,ime, jms,jme, kms,kme,                                              &
               its,ite,jts,jte,kts,kte                                                 )

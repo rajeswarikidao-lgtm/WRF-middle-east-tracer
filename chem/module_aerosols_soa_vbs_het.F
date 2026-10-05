@@ -51,6 +51,7 @@ CONTAINS
                vcsulf_old,                                              &
                vdrog3,                                                  &
                kemit,brch_ratio,do_isorropia,do_n2o5het,                &
+               rn_lossjc,                                               &
                ids,ide, jds,jde, kds,kde,                               &
                ims,ime, jms,jme, kms,kme,                               &
                its,ite, jts,jte, kts,kte                                )
@@ -80,6 +81,9 @@ CONTAINS
 
    REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                       &
          INTENT(INOUT ) ::    brch_ratio 
+! Rajeswari: j->coarse coagulation loss rate of j-mode mass [s-1], diagnostic only
+   REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                       &
+         INTENT(INOUT ) ::    rn_lossjc
 
 !           cvasoa1,cvasoa2,    &
 !           cvasoa3,cvasoa4,cvbsoa1,cvbsoa2,cvbsoa3,cvbsoa4
@@ -109,6 +113,7 @@ CONTAINS
 
 !...BLKSIZE set to one in column model ciarev02
       INTEGER, PARAMETER :: blksize=1
+      REAL loss_jc_cell(blksize)   ! Rajeswari: j->c coagulation loss rate of this cell [s-1]
 
 !...number of aerosol species
 !  number of species (gas + aerosol)
@@ -413,13 +418,15 @@ INTEGER :: i,j,k,l,debug_level
 !liqy -20150319
 ! the following operation updates cblk, which includes the vapors and SOA species
 ! condvap_in is removed
+      loss_jc_cell(1) = 0.0   ! Rajeswari: reset, set by coagrate_jc inside rpmmod3/aeroproc
       CALL rpmmod3(nspcsda,blksize,k,dtstep,10.*p(k),t(k),rh0(k),nitrate_in,nh3_in, &
         vsulf_in,so4rat_in,drog_in,ldrog_vbs,ncv,nacv,eeci_in,eecj_in, &
         eorgi_in,eorgj_in,epm25i,epm25j,epmcoarse,soilrat_in,cblk,i,j,k,brrto, &
-        do_isorropia,do_n2o5het )
+        do_isorropia,do_n2o5het,loss_jc_cell )
 
 ! calculation of brch_ratio
         brch_ratio(i,k,j)= brrto
+        rn_lossjc(i,k,j) = loss_jc_cell(1)   ! Rajeswari: store j->c coagulation loss rate [s-1]
         !------------------------------------------------------------------------
 
         chem(i,k,j,p_so4aj) = cblk(1,VSO4AJ )
@@ -1414,7 +1421,7 @@ SUBROUTINE aeroproc(blksize,nspcsda,numcells,layer,cblk,dt,blkta,blkprs, &
     epm25j,eorgi,eorgj,eeci,eecj,epmcoarse,esoil,eseas,xlm,amu,dgnuc, &
     dgacc,dgcor,pmassn,pmassa,pmassc,pdensn,pdensa,pdensc,knnuc,knacc, &
     kncor,fconcn,fconca,fconcn_org,fconca_org,dmdt,dndt,cgrn3,cgra3,urn00, &
-    ura00,brna01,c30,deltaso4a,igrid,jgrid,kgrid,brrto,do_isorropia,do_n2o5het)
+    ura00,brna01,c30,deltaso4a,igrid,jgrid,kgrid,brrto,do_isorropia,do_n2o5het,loss_jc)
 
 !USE module_configure, only: grid_config_rec_type
 !TYPE (grid_config_rec_type), INTENT (in) :: config_flags
@@ -1518,6 +1525,7 @@ SUBROUTINE aeroproc(blksize,nspcsda,numcells,layer,cblk,dt,blkta,blkprs, &
       REAL pdensn(blksize) ! average particle density in nuclei
       REAL pdensa(blksize) ! average particle density in accumu
       REAL pdensc(blksize) 
+      REAL loss_jc(blksize)   ! Rajeswari: j->c coagulation loss rate [s-1] (output)
 ! *** average modal Knudsen numbers
 
 ! average particle density in coarse
@@ -1620,6 +1628,10 @@ SUBROUTINE aeroproc(blksize,nspcsda,numcells,layer,cblk,dt,blkta,blkprs, &
 
       CALL coagrate(blksize,nspcsda,numcells,cblk,blkta,pdensn,pdensa,amu, &
         dgnuc,dgacc,knnuc,knacc,urn00,ura00,brna01,c30)
+
+! Rajeswari: j->coarse coagulation loss rate for tagged radionuclides (diagnostic; host aerosol not changed)
+      CALL coagrate_jc(blksize,nspcsda,numcells,cblk,blkta,pdensa,pdensc,amu, &
+        dgacc,dgcor,knacc,kncor,loss_jc)
 
 ! *** get condensation and particle formation (nucleation) rates:
 
@@ -2842,6 +2854,74 @@ SUBROUTINE awater(irhx,mso4,mnh4,mno3,wh2o)
 ! end of main lop over cells                            
       RETURN
 END SUBROUTINE coagrate
+!------------------------------------------------------------------
+! Rajeswari: j->coarse coagulation, loss rate of the j-mode 3rd moment (s-1)
+! Rajeswari: same Whitby / Binkowski-Shankar moment formulas as coagrate (i->j), applied to the
+! Rajeswari: j mode (sginia) and the coarse mode (sginic); validated offline against a Fuchs-kernel integral
+! Rajeswari: diagnostic only: host number and moments are NOT changed here (MADE has no j-c coagulation);
+! Rajeswari: the rate is used only to move tagged activity iodaj->iodac and csaj->csac
+    SUBROUTINE coagrate_jc(blksize,nspcsda,numcells,cblk,blkta,pdensa,pdensc,amu, &
+        dgacc,dgcor,knacc,kncor,loss_jc)
+      IMPLICIT NONE
+      INTEGER blksize, nspcsda, numcells
+      REAL cblk(blksize,nspcsda)
+      REAL blkta(blksize), pdensa(blksize), pdensc(blksize), amu(blksize)
+      REAL dgacc(blksize), dgcor(blksize), knacc(blksize), kncor(blksize)
+      REAL loss_jc(blksize)                   ! Rajeswari: output, j->c loss rate of j-mode M3 [s-1]
+      REAL*8, PARAMETER :: rn_a = 1.246D0     ! Rajeswari: Cunningham slip constant, as in coagrate
+      REAL*8, PARAMETER :: rn_bm3 = 0.9D0     ! Rajeswari: free-molecular 3rd-moment correction, as in coagrate
+      REAL*8 l2a, l2c
+      REAL*8 ea04, ea09, ea16, ea25, ea36, ea49, ea64, ea100, ec01, ec04, ec09, ec16
+      REAL*8 knc, kfm, dga3, t1, rat, rin, rsqt, rsq4, rsqti, rsqi3
+      REAL*8 bencm3, befm3, beta3
+      INTEGER lcell
+
+! Rajeswari: log-normal factors exp(k/8 ln^2 sigma) computed from the fixed MADE widths
+      l2a = LOG(DBLE(sginia))**2
+      l2c = LOG(DBLE(sginic))**2
+      ea04  = EXP(  4.0D0*l2a/8.0D0)
+      ea09  = EXP(  9.0D0*l2a/8.0D0)
+      ea16  = EXP( 16.0D0*l2a/8.0D0)
+      ea25  = EXP( 25.0D0*l2a/8.0D0)
+      ea36  = EXP( 36.0D0*l2a/8.0D0)
+      ea49  = EXP( 49.0D0*l2a/8.0D0)
+      ea64  = EXP( 64.0D0*l2a/8.0D0)
+      ea100 = EXP(100.0D0*l2a/8.0D0)
+      ec01  = EXP(  1.0D0*l2c/8.0D0)
+      ec04  = EXP(  4.0D0*l2c/8.0D0)
+      ec09  = EXP(  9.0D0*l2c/8.0D0)
+      ec16  = EXP( 16.0D0*l2c/8.0D0)
+
+      DO lcell = 1, numcells
+        loss_jc(lcell) = 0.0
+! Rajeswari: skip cells with (almost) no coarse particles or no j-mode particles
+        IF ( cblk(lcell,vcorn) .LT. 1.0 .OR. cblk(lcell,vac0) .LE. 0.0 .OR. &
+             cblk(lcell,vac3) .LE. 0.0 ) CYCLE
+        knc   = 2.0D0*DBLE(boltz)*DBLE(blkta(lcell))/(3.0D0*DBLE(amu(lcell)))
+        kfm   = SQRT(6.0D0*DBLE(boltz)*DBLE(blkta(lcell))/(DBLE(pdensa(lcell))+DBLE(pdensc(lcell))))
+        dga3  = DBLE(dgacc(lcell))**3
+        t1    = SQRT(DBLE(dgacc(lcell)))
+        rat   = DBLE(dgcor(lcell))/DBLE(dgacc(lcell))
+        rin   = 1.0D0/rat
+        rsqt  = SQRT(rat)
+        rsq4  = rat*rat
+        rsqti = 1.0D0/rsqt
+        rsqi3 = rsqti**3
+! Rajeswari: near-continuum 3rd-moment coefficient (j = smaller mode, coarse = larger mode)
+        bencm3 = knc*dga3*( 2.0D0*ea36 + rn_a*DBLE(knacc(lcell))*(ea16 + rat*ea04*ec04)   &
+               + rn_a*DBLE(kncor(lcell))*(ea36*ec04 + rin*ea64*ec16)                      &
+               + rat*ea16*ec04 + rin*ea64*ec04 )
+! Rajeswari: free-molecular 3rd-moment coefficient
+        befm3 = kfm*rn_bm3*t1*dga3*( ea49 + rsqt*ea36*ec01 + 2.0D0*rat*ea25*ec04          &
+              + rsq4*ea09*ec16 + rsqi3*ea100*ec09 + 2.0D0*rsqti*ea64*ec01 )
+! Rajeswari: harmonic mean of the two regimes, as in coagrate
+        beta3 = bencm3*befm3/(bencm3 + befm3)
+! Rajeswari: L = beta3 * N_j * N_c / M3_j  [s-1]
+        loss_jc(lcell) = REAL( beta3*DBLE(cblk(lcell,vcorn))*DBLE(cblk(lcell,vac0))    &
+                               /DBLE(cblk(lcell,vac3)) )
+      END DO
+      RETURN
+    END SUBROUTINE coagrate_jc
 !------------------------------------------------------------------
 
 ! subroutine  to find the roots of a cubic equation / 3rd order polynomi
@@ -5137,7 +5217,7 @@ END SUBROUTINE rpmares_old
     SUBROUTINE rpmmod3(nspcsda,blksize,layer,dtsec,pres,temp,relhum, &
         nitrate_in,nh3_in,vsulf_in,so4rat_in,drog_in,ldrog_vbs,ncv, &
         nacv,eeci_in,eecj_in,eorgi_in,eorgj_in,epm25i,epm25j,epmcoarse,    &
-        soilrat_in,cblk,igrid,jgrid,kgrid,brrto,do_isorropia,do_n2o5het)
+        soilrat_in,cblk,igrid,jgrid,kgrid,brrto,do_isorropia,do_n2o5het,loss_jc)
 
 !USE module_configure, only: grid_config_rec_type
 !TYPE (grid_config_rec_type), INTENT (in) :: config_flags
@@ -5151,6 +5231,7 @@ END SUBROUTINE rpmares_old
 !ia   			  kept to 1 in current version of column model
 ! actual number of cells in arrays ( default is
       INTEGER, PARAMETER  :: numcells=1
+      REAL loss_jc(blksize)   ! Rajeswari: j->c coagulation loss rate [s-1], passed through from aeroproc
 
       INTEGER layer
 ! number of layer (default is 1 in
@@ -5463,7 +5544,7 @@ END SUBROUTINE rpmares_old
         nacv,epm25i,epm25j,eorgi,eorgj,eeci,eecj,epmcoarse,esoil,eseas,xlm, &
         amu,dgnuc,dgacc,dgcor,pmassn,pmassa,pmassc,pdensn,pdensa,pdensc,knnuc, &
         knacc,kncor,fconcn,fconca,fconcn_org,fconca_org,dmdt,dndt,cgrn3,cgra3, &
-        urn00,ura00,brna01,brna31,deltaso4a,igrid,jgrid,kgrid,brrto,do_isorropia,do_n2o5het)
+        urn00,ura00,brna01,brna31,deltaso4a,igrid,jgrid,kgrid,brrto,do_isorropia,do_n2o5het,loss_jc)
 
 ! *** write output
 !      WRITE(UNIT,*) ' AFTER AEROPROC '
