@@ -570,14 +570,17 @@ CONTAINS
       SUBROUTINE decay_and_release(ip, hl, isrc, jsrc, ksrc, prate, pst, pend, crate, cst)
          INTEGER, INTENT(IN) :: ip, isrc, jsrc, ksrc
          REAL,    INTENT(IN) :: hl, prate, pst, pend, crate, cst
-         REAL :: decay_factor, rate, air_mass
+         REAL :: rate, air_mass
+         REAL*8 :: rn_fdec   ! Rajeswari: Stage A3 (replaces decay_factor)
 
          IF (ip .lt. param_first_scalar) RETURN      ! species not allocated
 
 !-- (1) radioactive decay
-         IF (hl .gt. 0.) THEN
-            decay_factor = exp( -log(2.) * dtstep / (hl*3600.) )
-            tracer(its:ite,kts:kte,jts:jte,ip) = tracer(its:ite,kts:kte,jts:jte,ip) * decay_factor
+! Rajeswari: Stage A3 - quantised, double-precision decay factor shared with the chem species (rn_decay_factor);
+! Rajeswari: the earlier per-step single-precision factor rounded to 1.0 for Cs-137 (dt=30 s); hl<=0 = no decay
+         rn_fdec = rn_decay_factor(hl, DBLE(curr_secs), DBLE(dtstep))
+         IF (rn_fdec .lt. 1.0D0) THEN
+            tracer(its:ite,kts:kte,jts:jte,ip) = REAL( DBLE(tracer(its:ite,kts:kte,jts:jte,ip)) * rn_fdec )
          ENDIF
 
 !-- (2) point-source release
@@ -667,5 +670,59 @@ CONTAINS
         END DO
       END DO
    END SUBROUTINE rn_coag_transfer
+! ===== added by Rajeswari : END =====
+! ===== added by Rajeswari (radioactive decay, Stage A3) : START =====
+! Rajeswari: decay factor for one model step that ends at elapsed time t_end [s] and has length dt [s]
+! Rajeswari: lambda = ln2/(hl*3600); decay is applied in quanta of DELTA = 1e-4 e-foldings:
+! Rajeswari:   n(t) = floor(lambda*t/DELTA),  factor = exp(-DELTA*(n(t_end) - n(t_end-dt)))
+! Rajeswari: why: in single precision exp(-lambda*dt) rounds to exactly 1.0 for Cs-137 with dt = 30 s,
+! Rajeswari: so a per-step factor never decays Cs-137; with quanta the total decay is exact at each
+! Rajeswari: quantum and never lags the exact solution by more than 0.01 %; it depends only on elapsed
+! Rajeswari: time, so it needs no saved state and is restart-safe. hl <= 0 means no decay (factor = 1)
+   REAL*8 FUNCTION rn_decay_factor(hl, t_end, dt)
+      IMPLICIT NONE
+      REAL,   INTENT(IN) :: hl            ! half-life [h]
+      REAL*8, INTENT(IN) :: t_end, dt     ! elapsed time at the end of the step, step length [s]
+      REAL*8, PARAMETER  :: delta = 1.0D-4
+      REAL*8 :: lam, n1, n0
+      rn_decay_factor = 1.0D0
+      IF ( hl .LE. 0. ) RETURN
+      lam = LOG(2.0D0) / ( DBLE(hl)*3600.0D0 )
+      n1  = AINT( lam*MAX(t_end,     0.0D0)/delta )
+      n0  = AINT( lam*MAX(t_end-dt,  0.0D0)/delta )
+      IF ( n1 .GT. n0 ) rn_decay_factor = EXP( -delta*(n1 - n0) )
+   END FUNCTION rn_decay_factor
+
+! Rajeswari: radioactive decay of the chem_opt=100 radionuclide species, called every model step
+! Rajeswari: I-131 (iodg, iodaj, iodac) uses hl_i, Cs-137 (csaj, csac) uses hl_cs [h]
+   SUBROUTINE rn_decay(chem, num_chem, hl_i, hl_cs, t_end, dt,         &
+                 ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte )
+      USE module_state_description, only: p_iodg, p_iodaj, p_iodac, p_csaj, p_csac, param_first_scalar
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: num_chem
+      INTEGER, INTENT(IN) :: ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte
+      REAL, DIMENSION(ims:ime,kms:kme,jms:jme,num_chem), INTENT(INOUT) :: chem
+      REAL,   INTENT(IN) :: hl_i, hl_cs
+      REAL*8, INTENT(IN) :: t_end, dt
+      REAL*8 :: fi, fc
+
+! Rajeswari: do nothing if the radionuclide species are not part of this chem_opt
+      IF ( p_iodg  .LT. param_first_scalar .OR. p_iodaj .LT. param_first_scalar .OR. &
+           p_iodac .LT. param_first_scalar .OR. p_csaj  .LT. param_first_scalar .OR. &
+           p_csac  .LT. param_first_scalar ) RETURN
+
+      fi = rn_decay_factor(hl_i,  t_end, dt)
+      fc = rn_decay_factor(hl_cs, t_end, dt)
+! Rajeswari: multiply in double precision so the 1e-4 decrement is applied without rounding loss
+      IF ( fi .LT. 1.0D0 ) THEN
+         chem(its:ite,kts:kte,jts:jte,p_iodg)  = REAL( DBLE(chem(its:ite,kts:kte,jts:jte,p_iodg))  * fi )
+         chem(its:ite,kts:kte,jts:jte,p_iodaj) = REAL( DBLE(chem(its:ite,kts:kte,jts:jte,p_iodaj)) * fi )
+         chem(its:ite,kts:kte,jts:jte,p_iodac) = REAL( DBLE(chem(its:ite,kts:kte,jts:jte,p_iodac)) * fi )
+      ENDIF
+      IF ( fc .LT. 1.0D0 ) THEN
+         chem(its:ite,kts:kte,jts:jte,p_csaj)  = REAL( DBLE(chem(its:ite,kts:kte,jts:jte,p_csaj))  * fc )
+         chem(its:ite,kts:kte,jts:jte,p_csac)  = REAL( DBLE(chem(its:ite,kts:kte,jts:jte,p_csac))  * fc )
+      ENDIF
+   END SUBROUTINE rn_decay
 ! ===== added by Rajeswari : END =====
 END MODULE module_input_tracer
