@@ -21,6 +21,7 @@ CONTAINS
                anh3,cvaro1,cvaro2,                                        &
                cvalk1,cvole1,cvapi1,cvapi2,cvlim1,cvlim2,dep_vel_o3,      &
                ddlen,ddflx,                                               &
+               rn_ddep_iodaj,rn_ddep_iodac,rn_ddep_csaj,rn_ddep_csac,     & ! Rajeswari: Stage B
                emis_ant,ebu_in,                                           &
                sf_urban_physics,numgas,current_month,dvel,snowh,          & 
                dustdrydep_1,dustdrydep_2,dustdrydep_3,                    &
@@ -141,6 +142,11 @@ CONTAINS
           INTENT(INOUT) ::                                      &
                     ddlen, & !dry deposition length
                     ddflx    !dry deposition flux
+! ===== added by Rajeswari (radionuclide species, Stage B) : START =====
+! Rajeswari: accumulated dry deposition of the radionuclide particle tags [Bq m-2]
+   REAL, DIMENSION( ims:ime, jms:jme ), INTENT(INOUT) ::                    &
+                    rn_ddep_iodaj, rn_ddep_iodac, rn_ddep_csaj, rn_ddep_csac
+! ===== added by Rajeswari : END =====
 
    REAL, INTENT(OUT), dimension(ims:ime,kms:kme,jms:jme) :: nsource, &
 	     ccn1,ccn2,ccn3,ccn4,ccn5,ccn6  ! number conc of aerosols activated at supersat
@@ -647,6 +653,20 @@ CONTAINS
     CASE DEFAULT 
                                                      
    END SELECT drydep_select                              
+! ===== added by Rajeswari (radionuclide species, Stage B) : START =====
+! Rajeswari: the particle tags deposit like their host mode: MADE's depdriver assigns velocities only up to corn
+! Rajeswari: iodaj, csaj = so4aj (accumulation-mode mass); iodac, csac = soila (coarse-mode mass, as dust)
+   IF ( config_flags%rn_opt == 1 ) THEN
+      IF ( p_iodaj >= param_first_scalar .AND. p_iodac >= param_first_scalar .AND.   &
+           p_csaj  >= param_first_scalar .AND. p_csac  >= param_first_scalar .AND.   &
+           p_so4aj >= param_first_scalar .AND. p_soila >= param_first_scalar ) THEN
+         ddvel(:,:,p_iodaj) = ddvel(:,:,p_so4aj)
+         ddvel(:,:,p_csaj)  = ddvel(:,:,p_so4aj)
+         ddvel(:,:,p_iodac) = ddvel(:,:,p_soila)
+         ddvel(:,:,p_csac)  = ddvel(:,:,p_soila)
+      ENDIF
+   ENDIF
+! ===== added by Rajeswari : END =====
 
 ! Add dep_vel here for all aerosol and gas species in the dvel array 
       ll = max( 1, min( config_flags%ndepvel, num_vert_mix ) )
@@ -802,6 +822,17 @@ CONTAINS
             chem(i,k,j,nv)=max(epsilc,pblst(k))
          enddo
       enddo
+! ===== added by Rajeswari (radionuclide species, Stage B) : START =====
+! Rajeswari: accumulated dry deposition [Bq m-2]: ddmassn = column activity removed at the surface in this call
+! Rajeswari: (aerosol-type species use rho*dz, so Bq kg-1 -> Bq m-2)
+      IF ( config_flags%rn_opt == 1 .AND. p_iodaj >= param_first_scalar .AND. p_iodac >= param_first_scalar &
+           .AND. p_csaj >= param_first_scalar .AND. p_csac >= param_first_scalar ) THEN
+         rn_ddep_iodaj(i,j) = rn_ddep_iodaj(i,j) + ddmassn(p_iodaj)
+         rn_ddep_iodac(i,j) = rn_ddep_iodac(i,j) + ddmassn(p_iodac)
+         rn_ddep_csaj(i,j)  = rn_ddep_csaj(i,j)  + ddmassn(p_csaj)
+         rn_ddep_csac(i,j)  = rn_ddep_csac(i,j)  + ddmassn(p_csac)
+      ENDIF
+! ===== added by Rajeswari : END =====
 
       if( config_flags%diagnostic_chem == DEPVEL1 .and. &
           (config_flags%chem_opt == CB05_SORG_VBS_AQ_KPP) ) then

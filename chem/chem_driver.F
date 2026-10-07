@@ -1069,6 +1069,7 @@
                  grid%ahno3,grid%anh3,grid%cvaro1,grid%cvaro2,grid%cvalk1,grid%cvole1,&
                  grid%cvapi1,grid%cvapi2,grid%cvlim1,grid%cvlim2,grid%dep_vel_o3,     &
                  grid%ddlen,grid%ddflx, &
+                 grid%rn_ddep_iodaj,grid%rn_ddep_iodac,grid%rn_ddep_csaj,grid%rn_ddep_csac, & ! Rajeswari: Stage B
                  emis_ant,ebu_in,                                                     &
                  config_flags%sf_urban_physics,numgas,current_month,dvel,grid%snowh,  &
                  grid%dustdrydep_1,grid%dustdrydep_2,grid%dustdrydep_3,               &
