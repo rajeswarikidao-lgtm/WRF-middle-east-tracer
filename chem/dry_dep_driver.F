@@ -22,6 +22,7 @@ CONTAINS
                cvalk1,cvole1,cvapi1,cvapi2,cvlim1,cvlim2,dep_vel_o3,      &
                ddlen,ddflx,                                               &
                rn_ddep_iodaj,rn_ddep_iodac,rn_ddep_csaj,rn_ddep_csac,     & ! Rajeswari: Stage B
+               rn_ddep_iodg,                                               & ! Rajeswari: Stage C2
                emis_ant,ebu_in,                                           &
                sf_urban_physics,numgas,current_month,dvel,snowh,          & 
                dustdrydep_1,dustdrydep_2,dustdrydep_3,                    &
@@ -146,6 +147,7 @@ CONTAINS
 ! Rajeswari: accumulated dry deposition of the radionuclide particle tags [Bq m-2]
    REAL, DIMENSION( ims:ime, jms:jme ), INTENT(INOUT) ::                    &
                     rn_ddep_iodaj, rn_ddep_iodac, rn_ddep_csaj, rn_ddep_csac
+   REAL, DIMENSION( ims:ime, jms:jme ), INTENT(INOUT) :: rn_ddep_iodg   ! Rajeswari: Stage C2 [Bq m-2]
 ! ===== added by Rajeswari : END =====
 
    REAL, INTENT(OUT), dimension(ims:ime,kms:kme,jms:jme) :: nsource, &
@@ -667,6 +669,23 @@ CONTAINS
       ENDIF
    ENDIF
 ! ===== added by Rajeswari : END =====
+! ===== added by Rajeswari (radionuclide species, Stage C2) : START =====
+! Rajeswari: iodg has no Wesely parameters (hstar = 0, default surface resistance ~ 0), which gives an unphysical
+! Rajeswari: aerodynamic-limit velocity; it is replaced by the prescribed rn_iodg_vd [m s-1] (0 = no iodg dry deposition).
+! Rajeswari: Applied only when gas dry deposition is on, like every other gas.
+   IF ( config_flags%rn_opt == 1 .AND. config_flags%gas_drydep_opt > 0 .AND. p_iodg >= param_first_scalar ) THEN
+      ddvel(:,:,p_iodg) = MAX( config_flags%rn_iodg_vd, 0. )
+   ENDIF
+! Rajeswari: rn_aer_ddep_opt = 0 switches off dry deposition of the four particle tags only (the host aerosol is unchanged)
+   IF ( config_flags%rn_opt == 1 .AND. config_flags%rn_aer_ddep_opt == 0 .AND.                    &
+        p_iodaj >= param_first_scalar .AND. p_iodac >= param_first_scalar .AND.                     &
+        p_csaj  >= param_first_scalar .AND. p_csac  >= param_first_scalar ) THEN
+      ddvel(:,:,p_iodaj) = 0.
+      ddvel(:,:,p_iodac) = 0.
+      ddvel(:,:,p_csaj)  = 0.
+      ddvel(:,:,p_csac)  = 0.
+   ENDIF
+! ===== added by Rajeswari : END =====
 
 ! Add dep_vel here for all aerosol and gas species in the dvel array 
       ll = max( 1, min( config_flags%ndepvel, num_vert_mix ) )
@@ -831,6 +850,13 @@ CONTAINS
          rn_ddep_iodac(i,j) = rn_ddep_iodac(i,j) + ddmassn(p_iodac)
          rn_ddep_csaj(i,j)  = rn_ddep_csaj(i,j)  + ddmassn(p_csaj)
          rn_ddep_csac(i,j)  = rn_ddep_csac(i,j)  + ddmassn(p_csac)
+      ENDIF
+! ===== added by Rajeswari : END =====
+! ===== added by Rajeswari (radionuclide species, Stage C2) : START =====
+! Rajeswari: iodg is a gas: ddmassn is in 'mol m-2' (ppmv * 1e-6 * rho_dry/(mwdry*1e-3) * dz); removing the
+! Rajeswari: ppmv-to-mol factor gives the activity column loss: Bq kg-1 * rho_dry * dz = Bq m-2
+      IF ( config_flags%rn_opt == 1 .AND. p_iodg >= param_first_scalar ) THEN
+         rn_ddep_iodg(i,j) = rn_ddep_iodg(i,j) + ddmassn(p_iodg) * (mwdry*1.e-3) / 1.e-6
       ENDIF
 ! ===== added by Rajeswari : END =====
 
