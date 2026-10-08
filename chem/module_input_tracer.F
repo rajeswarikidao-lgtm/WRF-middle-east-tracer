@@ -725,4 +725,73 @@ CONTAINS
       ENDIF
    END SUBROUTINE rn_decay
 ! ===== added by Rajeswari : END =====
+! ===== added by Rajeswari (radionuclide species, Stage C1) : START =====
+! Rajeswari: point-source release into the chem_opt=100 radionuclide species, called every model step from chem_driver
+! Rajeswari: identical source cell, time profile and Bq -> Bq/kg conversion as decay_and_release (tracer_opt=11):
+! Rajeswari:   Q [Bq/h] = pulse rate for pulse_start <= t < pulse_end, else cont rate for t >= cont_start, else 0
+! Rajeswari:   dA [Bq per kg dry air] = Q*dt/3600 / M_air,  M_air = dx*dy/(msftx*msfty) * dz8w / alt
+! Rajeswari: I-131 (iso1 settings): fraction f_part into iodaj, (1 - f_part) into iodg
+! Rajeswari: Cs-137 (iso2 settings): all into csaj; the coarse tags fill only through the j->c transfer
+   SUBROUTINE rn_release(chem, num_chem, dtstep, curr_secs, alt, dz8w, dx, dy, msftx, msfty, f_part, &
+                 i1, j1, k1, prate1, pst1, pend1, crate1, cst1,                                    &
+                 i2, j2, k2, prate2, pst2, pend2, crate2, cst2,                                    &
+                 ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte )
+      USE module_state_description, only: p_iodg, p_iodaj, p_csaj, param_first_scalar
+      IMPLICIT NONE
+      INTEGER, INTENT(IN) :: num_chem
+      INTEGER, INTENT(IN) :: ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte
+      REAL, DIMENSION(ims:ime,kms:kme,jms:jme,num_chem), INTENT(INOUT) :: chem
+      REAL, DIMENSION(ims:ime,kms:kme,jms:jme),          INTENT(IN)    :: alt, dz8w
+      REAL, DIMENSION(ims:ime,jms:jme),                  INTENT(IN)    :: msftx, msfty
+      REAL,    INTENT(IN) :: dtstep, curr_secs, dx, dy, f_part
+      REAL,    INTENT(IN) :: prate1, pst1, pend1, crate1, cst1
+      REAL,    INTENT(IN) :: prate2, pst2, pend2, crate2, cst2
+      INTEGER, INTENT(IN) :: i1, j1, k1, i2, j2, k2
+      REAL :: t_hours, fp, da
+
+! Rajeswari: do nothing if the radionuclide species are not part of this chem_opt
+      IF ( p_iodg .LT. param_first_scalar .OR. p_iodaj .LT. param_first_scalar .OR. &
+           p_csaj .LT. param_first_scalar ) RETURN
+
+      t_hours = curr_secs / 3600.
+      fp = MIN( MAX(f_part, 0.), 1. )      ! Rajeswari: particulate fraction limited to [0,1]
+
+! Rajeswari: I-131
+      da = rn_point_release(i1, j1, k1, prate1, pst1, pend1, crate1, cst1)
+      IF ( da .GT. 0. ) THEN
+         chem(i1,k1,j1,p_iodg)  = chem(i1,k1,j1,p_iodg)  + (1. - fp) * da
+         chem(i1,k1,j1,p_iodaj) = chem(i1,k1,j1,p_iodaj) + fp * da
+      ENDIF
+! Rajeswari: Cs-137
+      da = rn_point_release(i2, j2, k2, prate2, pst2, pend2, crate2, cst2)
+      IF ( da .GT. 0. ) THEN
+         chem(i2,k2,j2,p_csaj) = chem(i2,k2,j2,p_csaj) + da
+      ENDIF
+
+   CONTAINS
+
+! Rajeswari: activity [Bq/kg] added to the source cell in this step; 0 when there is no release
+! Rajeswari: or when the cell is not on this tile (only the owning tile adds it - MPI/OpenMP safe)
+      REAL FUNCTION rn_point_release(isrc, jsrc, ksrc, prate, pst, pend, crate, cst)
+         INTEGER, INTENT(IN) :: isrc, jsrc, ksrc
+         REAL,    INTENT(IN) :: prate, pst, pend, crate, cst
+         REAL :: rate, air_mass
+         rn_point_release = 0.
+         rate = 0.
+         IF (t_hours .ge. pst .and. t_hours .lt. pend) THEN
+            rate = prate
+         ELSE IF (t_hours .ge. cst) THEN
+            rate = crate
+         ENDIF
+         IF (rate .gt. 0.) THEN
+            IF (isrc .ge. its .and. isrc .le. ite .and.        &
+                jsrc .ge. jts .and. jsrc .le. jte .and.        &
+                ksrc .ge. kts .and. ksrc .le. kte) THEN
+               air_mass = dx*dy/(msftx(isrc,jsrc)*msfty(isrc,jsrc)) * dz8w(isrc,ksrc,jsrc) / alt(isrc,ksrc,jsrc)
+               rn_point_release = rate*dtstep/3600. / air_mass
+            ENDIF
+         ENDIF
+      END FUNCTION rn_point_release
+   END SUBROUTINE rn_release
+! ===== added by Rajeswari : END =====
 END MODULE module_input_tracer

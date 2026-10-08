@@ -43,6 +43,7 @@
   USE module_input_tracer, only: set_isotope_tracer
   USE module_input_tracer, only: rn_coag_transfer   ! Rajeswari: Stage A2b
   USE module_input_tracer, only: rn_decay           ! Rajeswari: Stage A3
+  USE module_input_tracer, only: rn_release         ! Rajeswari: Stage C1
 ! ===== added by Rajeswari : END =====
   USE module_wetscav_driver, only: wetscav_driver
   USE module_wetdep_ls, only:wetdep_ls
@@ -1838,6 +1839,19 @@ end if !Chemistry time step check
 ! Rajeswari: Stage A3 - radioactive decay every model step; I-131 uses iso1_half_life_h, Cs-137 iso2_half_life_h [h]; <=0 = off
       CALL rn_decay(chem, num_chem, config_flags%iso1_half_life_h, config_flags%iso2_half_life_h, &
               DBLE(ktau)*DBLE(grid%dt), DBLE(grid%dt),                                    &
+              ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte )
+! Rajeswari: Stage C1 - point-source release every model step, after the decay as in the tracer_opt=11 release;
+! Rajeswari: I-131 (iso1_*): rn_iod_frac_part into iodaj, the rest into iodg;  Cs-137 (iso2_*): all into csaj
+      CALL rn_release(chem, num_chem, grid%dt, real(curr_secs), rri, dz8w, grid%dx, grid%dy,   &
+              grid%msftx, grid%msfty, config_flags%rn_iod_frac_part,                         &
+              config_flags%iso1_i, config_flags%iso1_j, config_flags%iso1_k,                 &
+              config_flags%iso1_pulse_rate, config_flags%iso1_pulse_start_h,                 &
+              config_flags%iso1_pulse_end_h, config_flags%iso1_cont_rate,                    &
+              config_flags%iso1_cont_start_h,                                                &
+              config_flags%iso2_i, config_flags%iso2_j, config_flags%iso2_k,                 &
+              config_flags%iso2_pulse_rate, config_flags%iso2_pulse_start_h,                 &
+              config_flags%iso2_pulse_end_h, config_flags%iso2_cont_rate,                    &
+              config_flags%iso2_cont_start_h,                                                &
               ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte )
 ! Rajeswari: j->coarse coagulation transfer, on chemistry steps only, with the chemistry time step
       IF ( config_flags%rn_coag_opt == 1 .AND. do_chemstep ) THEN
