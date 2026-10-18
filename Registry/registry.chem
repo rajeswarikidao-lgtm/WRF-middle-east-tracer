@@ -4244,6 +4244,10 @@ rconfig   real      rn_iodg_vd         namelist,chem   max_domains   0.     rh  
 rconfig   real      rn_init_aj         namelist,chem   max_domains   0.     rh   "rn_init_aj"         "uniform initial iodaj and csaj for tests"      "Bq kg-1"
 # Rajeswari: Stage C2 - switch for dry deposition of the particle tags only (default 1 = as in Stage B)
 rconfig   integer   rn_aer_ddep_opt    namelist,chem   max_domains   1      rh   "rn_aer_ddep_opt"    "dry deposition of the radionuclide particle tags 0=off 1=on"   ""
+# Rajeswari: Stage C3 - iodg dry deposition: 0 off, 1 constant rn_iodg_vd, 2 resistance model 1/(ra+rb+rn_iodg_rc)
+rconfig   integer   rn_iodg_ddep_opt   namelist,chem   max_domains   0      rh   "rn_iodg_ddep_opt"   "iodg dry deposition 0=off 1=constant rn_iodg_vd 2=resistance model"   ""
+rconfig   real      rn_iodg_rc         namelist,chem   max_domains   330.   rh   "rn_iodg_rc"         "iodg surface resistance for rn_iodg_ddep_opt=2"   "s m-1"
+rconfig   real      rn_iodg_dvj        namelist,chem   max_domains   0.08   rh   "rn_iodg_dvj"        "iodg (I2) diffusivity in air at 298 K, for r_b"   "cm2 s-1"
 
 # the following arrays only needed for aircraft emissions options
 package   aircraft1      aircraft_emiss_opt==1             -       emis_aircraft:eac_no,eac_co,eac_so2,eac_ch4

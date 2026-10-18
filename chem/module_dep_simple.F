@@ -245,6 +245,11 @@ tile_lon_loop : &
             else
                srfres(1:numgas) = rcx(1:numgas)
             end if
+! ===== added by Rajeswari (radionuclide species, Stage C3) : START =====
+! Rajeswari: option B: prescribed surface resistance of iodine gas; landusevg then gives v_d = 1/(r_a + r_b + r_c)
+            IF ( config_flags%rn_opt == 1 .AND. config_flags%rn_iodg_ddep_opt == 2 .AND. &
+                 p_iodg >= param_first_scalar ) srfres(p_iodg) = config_flags%rn_iodg_rc
+! ===== added by Rajeswari : END =====
             CALL deppart( rmol(i,j), ustar, rhchem, clwchem, iland, dvpart, dvfog )
             ddvel0d(1:numgas) = 0.
             aer_res_def(i,j)  = 0.
@@ -4191,6 +4196,16 @@ seasonal_pft_allocated : &
         endif seasonal_pft_allocated
       endif is_mozart
 #endif
+! ===== added by Rajeswari (radionuclide species, Stage C3) : START =====
+! Rajeswari: iodg is in no species list and keeps the placeholder dvj = 99 cm2/s (Sc ~ 0, r_b ~ 0); give it the
+! Rajeswari: diffusivity of I2 (rn_iodg_dvj, 298 K) with the same 20 C correction and formulas as the loops above
+      IF ( config_flags%rn_opt == 1 .AND. p_iodg >= param_first_scalar ) THEN
+         dvj(p_iodg)    = config_flags%rn_iodg_dvj*(293.15/298.15)**1.75
+         sc             = 0.15/dvj(p_iodg)
+         dratio(p_iodg) = 0.242/dvj(p_iodg)
+         scpr23(p_iodg) = (sc/0.72)**(2./3.)
+      ENDIF
+! ===== added by Rajeswari : END =====
       END SUBROUTINE dep_init
 
       SUBROUTINE HL_init( numgas )

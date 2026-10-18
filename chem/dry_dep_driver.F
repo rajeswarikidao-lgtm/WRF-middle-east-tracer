@@ -670,11 +670,19 @@ CONTAINS
    ENDIF
 ! ===== added by Rajeswari : END =====
 ! ===== added by Rajeswari (radionuclide species, Stage C2) : START =====
-! Rajeswari: iodg has no Wesely parameters (hstar = 0, default surface resistance ~ 0), which gives an unphysical
-! Rajeswari: aerodynamic-limit velocity; it is replaced by the prescribed rn_iodg_vd [m s-1] (0 = no iodg dry deposition).
-! Rajeswari: Applied only when gas dry deposition is on, like every other gas.
+! Rajeswari: iodg dry deposition velocity (applied only when gas dry deposition is on, like every other gas):
+! Rajeswari:   rn_iodg_ddep_opt = 1: prescribed constant rn_iodg_vd [m s-1] (Stage C2)
+! Rajeswari:   rn_iodg_ddep_opt = 2: Wesely resistance model 1/(r_a + r_b + rn_iodg_rc), computed in module_dep_simple (Stage C3)
+! Rajeswari:   otherwise: no iodg dry deposition
    IF ( config_flags%rn_opt == 1 .AND. config_flags%gas_drydep_opt > 0 .AND. p_iodg >= param_first_scalar ) THEN
-      ddvel(:,:,p_iodg) = MAX( config_flags%rn_iodg_vd, 0. )
+      SELECT CASE ( config_flags%rn_iodg_ddep_opt )
+      CASE (1)
+         ddvel(:,:,p_iodg) = MAX( config_flags%rn_iodg_vd, 0. )
+      CASE (2)
+         ! Rajeswari: keep the velocity computed by the Wesely routine
+      CASE DEFAULT
+         ddvel(:,:,p_iodg) = 0.
+      END SELECT
    ENDIF
 ! Rajeswari: rn_aer_ddep_opt = 0 switches off dry deposition of the four particle tags only (the host aerosol is unchanged)
    IF ( config_flags%rn_opt == 1 .AND. config_flags%rn_aer_ddep_opt == 0 .AND.                    &
@@ -844,8 +852,10 @@ CONTAINS
 ! ===== added by Rajeswari (radionuclide species, Stage B) : START =====
 ! Rajeswari: accumulated dry deposition [Bq m-2]: ddmassn = column activity removed at the surface in this call
 ! Rajeswari: (aerosol-type species use rho*dz, so Bq kg-1 -> Bq m-2)
+! Rajeswari: Stage C3 guard - accumulate only if particle-tag deposition is on (otherwise ddmassn holds only rounding residual)
       IF ( config_flags%rn_opt == 1 .AND. p_iodaj >= param_first_scalar .AND. p_iodac >= param_first_scalar &
-           .AND. p_csaj >= param_first_scalar .AND. p_csac >= param_first_scalar ) THEN
+           .AND. p_csaj >= param_first_scalar .AND. p_csac >= param_first_scalar                          &
+           .AND. config_flags%aer_drydep_opt > 0 .AND. config_flags%rn_aer_ddep_opt == 1 ) THEN
          rn_ddep_iodaj(i,j) = rn_ddep_iodaj(i,j) + ddmassn(p_iodaj)
          rn_ddep_iodac(i,j) = rn_ddep_iodac(i,j) + ddmassn(p_iodac)
          rn_ddep_csaj(i,j)  = rn_ddep_csaj(i,j)  + ddmassn(p_csaj)
@@ -855,7 +865,10 @@ CONTAINS
 ! ===== added by Rajeswari (radionuclide species, Stage C2) : START =====
 ! Rajeswari: iodg is a gas: ddmassn is in 'mol m-2' (ppmv * 1e-6 * rho_dry/(mwdry*1e-3) * dz); removing the
 ! Rajeswari: ppmv-to-mol factor gives the activity column loss: Bq kg-1 * rho_dry * dz = Bq m-2
-      IF ( config_flags%rn_opt == 1 .AND. p_iodg >= param_first_scalar ) THEN
+! Rajeswari: Stage C3 guard - accumulate only if iodg deposition is on (opt 2, or opt 1 with rn_iodg_vd > 0)
+      IF ( config_flags%rn_opt == 1 .AND. p_iodg >= param_first_scalar .AND. config_flags%gas_drydep_opt > 0 &
+           .AND. ( config_flags%rn_iodg_ddep_opt == 2 .OR.                                               &
+                  (config_flags%rn_iodg_ddep_opt == 1 .AND. config_flags%rn_iodg_vd > 0.) ) ) THEN
          rn_ddep_iodg(i,j) = rn_ddep_iodg(i,j) + ddmassn(p_iodg) * (mwdry*1.e-3) / 1.e-6
       ENDIF
 ! ===== added by Rajeswari : END =====
