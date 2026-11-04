@@ -52,6 +52,7 @@ CONTAINS
                vdrog3,                                                  &
                kemit,brch_ratio,do_isorropia,do_n2o5het,                &
                rn_lossjc,                                               &
+               rn_dgnuc, rn_dgacc, rn_dgcor,                            &
                ids,ide, jds,jde, kds,kde,                               &
                ims,ime, jms,jme, kms,kme,                               &
                its,ite, jts,jte, kts,kte                                )
@@ -84,6 +85,9 @@ CONTAINS
 ! Rajeswari: j->coarse coagulation loss rate of j-mode mass [s-1], diagnostic only
    REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                       &
          INTENT(INOUT ) ::    rn_lossjc
+! Rajeswari: Stage E2 - MADE geometric mean diameters (number) of the Aitken, accumulation (wet) and coarse (dry) modes [m]
+   REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                       &
+         INTENT(INOUT ) ::    rn_dgnuc, rn_dgacc, rn_dgcor
 
 !           cvasoa1,cvasoa2,    &
 !           cvasoa3,cvasoa4,cvbsoa1,cvbsoa2,cvbsoa3,cvbsoa4
@@ -427,6 +431,14 @@ INTEGER :: i,j,k,l,debug_level
 ! calculation of brch_ratio
         brch_ratio(i,k,j)= brrto
         rn_lossjc(i,k,j) = loss_jc_cell(1)   ! Rajeswari: store j->c coagulation loss rate [s-1]
+! Rajeswari: Stage E2 - mode diameters after this step, same formula as getpar: dg = (M3/(N exp(4.5 ln2 sigma)))**(1/3)
+! Rajeswari: (the accumulation M3 includes aerosol water, the coarse M3 does not)
+        rn_dgnuc(i,k,j) = 0.
+        rn_dgacc(i,k,j) = 0.
+        rn_dgcor(i,k,j) = 0.
+        IF ( cblk(1,VNU0)  .GT. 0. .AND. cblk(1,VNU3)  .GT. 0. ) rn_dgnuc(i,k,j) = (cblk(1,VNU3) /(cblk(1,VNU0) *esn36))**(1./3.)
+        IF ( cblk(1,VAC0)  .GT. 0. .AND. cblk(1,VAC3)  .GT. 0. ) rn_dgacc(i,k,j) = (cblk(1,VAC3) /(cblk(1,VAC0) *esa36))**(1./3.)
+        IF ( cblk(1,VCORN) .GT. 0. .AND. cblk(1,VCOR3) .GT. 0. ) rn_dgcor(i,k,j) = (cblk(1,VCOR3)/(cblk(1,VCORN)*esc36))**(1./3.)
         !------------------------------------------------------------------------
 
         chem(i,k,j,p_so4aj) = cblk(1,VSO4AJ )

@@ -18,6 +18,7 @@
                is_CAMMGMP_used,                                            &!BSINGH:01/31/2013: Added is_CAMMGMP_used for cam_mam_aerchem_driver
                ph_aer01, ph_aer02, ph_aer03, ph_aer04,                     &
                rn_lossjc,                                                  &
+               rn_dgnuc, rn_dgacc, rn_dgcor,                               &
                ids,ide, jds,jde, kds,kde,                                  &
                ims,ime, jms,jme, kms,kme,                                  &
                its,ite, jts,jte, kts,kte                                   )
@@ -147,6 +148,9 @@
 ! Rajeswari: j->coarse coagulation loss rate [s-1], filled by soa_vbs_het_driver
    REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                    &
          INTENT(INOUT ) ::                                rn_lossjc
+! Rajeswari: Stage E2 - MADE mode diameters [m], filled by soa_vbs_het_driver
+   REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                    &
+         INTENT(INOUT ) ::                                rn_dgnuc, rn_dgacc, rn_dgcor
 
    REAL, DIMENSION( ims:ime, kms:kme, jms:jme, ntot_amode_cam_mam ), &
          INTENT(INOUT ) ::                                   &
@@ -343,6 +347,7 @@
             config_flags%do_isorropia,                               &
             config_flags%do_n2o5het,                                 &
             rn_lossjc,                                               &
+            rn_dgnuc, rn_dgacc, rn_dgcor,                            &
             ids,ide, jds,jde, kds,kde,                               &
             ims,ime, jms,jme, kms,kme,                               &
             its,ite, jts,jte, kts,kte                                ) 

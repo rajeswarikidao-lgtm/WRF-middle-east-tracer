@@ -794,4 +794,269 @@ CONTAINS
       END FUNCTION rn_point_release
    END SUBROUTINE rn_release
 ! ===== added by Rajeswari : END =====
+! ===== added by Rajeswari (radionuclide species, Stage E2: large-scale wet scavenging) : START =====
+! Rajeswari: wet removal of the radionuclide species (and optionally the host aerosol) by large-scale
+! Rajeswari: (microphysics) precipitation, called every model step from chem_driver after rn_coag_transfer.
+! Rajeswari: Column algorithm, top to bottom, per species:
+! Rajeswari:   1. re-evaporation: where the rain flux F = precr decreases downward, the same fraction of
+! Rajeswari:      the activity carried by the falling rain is returned to the air of that layer
+! Rajeswari:   2. removal dC = C [1 - exp(-L dt)] in the layer; the removed activity joins the falling rain
+! Rajeswari:   3. what reaches the ground is the wet deposition (RN_WDLS_*, Bq m-2)
+! Rajeswari: Removal rate L (rn_wdep_opt = 1 base, 2 NAME reference):
+! Rajeswari:   cloud layers (qc+qi > cld_thresh): in-cloud rainout, L = eps * base
+! Rajeswari:      base = qlsink (opt 1; cloud water -> precipitation rate / qc from the microphysics)
+! Rajeswari:      base = A * P**B with A = 8.4e-5 s-1, B = 0.79 (opt 2; NAME)
+! Rajeswari:      eps = 1.0 accumulation, 0.5 coarse (as in the Grell convective scavenging), 0 Aitken
+! Rajeswari:   other layers with rain falling through (P > 1e-4 mm/h): below-cloud washout
+! Rajeswari:      opt 1: L = rn_wdep_scale * <A(d) P**B(d)> averaged over the lognormal mode (Wang, Zhang and
+! Rajeswari:             Moran 2014, GMD 7, 799, rain, Table 8), mass- or number-weighted, with the MADE
+! Rajeswari:             geometric mean diameters rn_dg* (m)
+! Rajeswari:      opt 2: L = rn_wdep_scale * A * P**B (NAME, all particle sizes)
+! Rajeswari:   iodg (treated as I2): in cloud L = f_aq * base (Henry's law partitioning into cloud water);
+! Rajeswari:      below cloud L = H' P / H_col (Henry-limited washout, HYSPLIT form), H' = K_H R T
+! Rajeswari: P = local rain rate from precr [kg m-2 s-1 = mm s-1]; test mode rn_wd_test_rain > 0 prescribes
+! Rajeswari: a uniform P in every layer, below-cloud washout only, no re-evaporation.
+   SUBROUTINE rn_wetscav_ls(chem, num_chem, numgas, moist, num_moist, precr, qlsink, t_phy, alt, dz8w, &
+                 dgnuc, dgacc, dgcor, dtstep, config_flags, id,                                     &
+                 wd_iodg, wd_iodaj, wd_iodac, wd_csaj, wd_csac,                                     &
+                 ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte )
+      USE module_configure, only: grid_config_rec_type
+      USE module_scalar_tables, only: chem_dname_table
+      USE module_state_description, only: p_iodg, p_iodaj, p_iodac, p_csaj, p_csac, p_qc, p_qi,  &
+                                          p_nu0, p_ac0, p_corn, p_antha, p_seas, p_soila,         &
+                                          param_first_scalar
+      IMPLICIT NONE
+      TYPE(grid_config_rec_type), INTENT(IN) :: config_flags
+      INTEGER, INTENT(IN) :: num_chem, numgas, num_moist, id
+      INTEGER, INTENT(IN) :: ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte
+      REAL, DIMENSION(ims:ime,kms:kme,jms:jme,num_chem),  INTENT(INOUT) :: chem
+      REAL, DIMENSION(ims:ime,kms:kme,jms:jme,num_moist), INTENT(IN)    :: moist
+      REAL, DIMENSION(ims:ime,kms:kme,jms:jme),           INTENT(IN)    :: precr, qlsink, t_phy, alt, dz8w, &
+                                                                           dgnuc, dgacc, dgcor
+      REAL, DIMENSION(ims:ime,jms:jme),                   INTENT(INOUT) :: wd_iodg, wd_iodaj, wd_iodac, &
+                                                                           wd_csaj, wd_csac
+      REAL, INTENT(IN) :: dtstep
+
+! Rajeswari: species classes: 1 accumulation mass, 2 coarse mass, 3 iodine gas (Henry), 4 Aitken mass,
+! Rajeswari:                  5 Aitken number, 6 accumulation number, 7 coarse number
+      INTEGER, PARAMETER :: ncls = 7
+      REAL*8,  PARAMETER :: pmin = 1.0D-4          ! Rajeswari: smallest rain rate treated [mm h-1]
+      REAL*8,  PARAMETER :: rgas_atm = 0.082057D0  ! Rajeswari: gas constant [L atm mol-1 K-1]
+      REAL*8,  PARAMETER :: rgas_si  = 8.31446D0   ! Rajeswari: gas constant [J mol-1 K-1]
+      REAL*8,  PARAMETER :: a_name = 8.4D-5, b_name = 0.79D0   ! Rajeswari: NAME rain coefficients (Met Office)
+      REAL*8,  PARAMETER :: eps_j = 1.0D0, eps_c = 0.5D0      ! Rajeswari: in-cloud efficiency, accumulation / coarse
+      REAL*8,  PARAMETER :: cld_thresh = 1.0D-6               ! Rajeswari: cloud threshold qc+qi [kg kg-1]
+      REAL*8,  PARAMETER :: kh_i2 = 2.84D0, dhr_i2 = 4300.0D0 ! Rajeswari: I2 Henry constant [M atm-1], dlnH/d(1/T) [K]
+                                                              ! Rajeswari: (Eguchi et al. 1973, Sander compilation)
+      INTEGER :: nsp, n, nv, i, j, k, ltr
+      INTEGER, DIMENSION(num_chem) :: isp, icl, idg
+      LOGICAL :: test, reevap, cloudy, anyrain
+      REAL*8  :: p_mmh(kts:kte), wcar(num_chem), lamc(ncls)
+      REAL*8  :: rmass, fe, rel, lam, f, dc, hcol, base, tk, heff, hdim, qliq, faq, qcl
+      REAL*8  :: dgn, dga, dgc
+      CHARACTER(LEN=32) :: nm
+
+! Rajeswari: do nothing if the radionuclide species are not part of this chem_opt or the scheme is off
+      IF ( config_flags%rn_wdep_opt .LE. 0 ) RETURN
+      IF ( p_iodg  .LT. param_first_scalar .OR. p_iodaj .LT. param_first_scalar .OR. &
+           p_iodac .LT. param_first_scalar .OR. p_csaj  .LT. param_first_scalar .OR. &
+           p_csac  .LT. param_first_scalar ) RETURN
+
+      test   = config_flags%rn_wd_test_rain .GT. 0.
+      reevap = .NOT. test
+
+! Rajeswari: list of species to scavenge: the five radionuclide species (idg = output index 1..5), then the host aerosol
+      nsp = 0
+      CALL add_sp(p_iodaj, 1, 2) ; CALL add_sp(p_csaj, 1, 4)
+      CALL add_sp(p_iodac, 2, 3) ; CALL add_sp(p_csac, 2, 5)
+      CALL add_sp(p_iodg, 3, 1)
+      IF ( config_flags%rn_wdep_host_opt .EQ. 1 ) THEN
+         DO nv = numgas+1, num_chem
+            IF ( nv.EQ.p_iodg .OR. nv.EQ.p_iodaj .OR. nv.EQ.p_iodac .OR. nv.EQ.p_csaj .OR. nv.EQ.p_csac ) CYCLE
+            IF ( nv .EQ. p_nu0 ) THEN
+               CALL add_sp(nv, 5, 0)
+            ELSE IF ( nv .EQ. p_ac0 ) THEN
+               CALL add_sp(nv, 6, 0)
+            ELSE IF ( nv .EQ. p_corn ) THEN
+               CALL add_sp(nv, 7, 0)
+            ELSE IF ( nv.EQ.p_antha .OR. nv.EQ.p_seas .OR. nv.EQ.p_soila ) THEN
+               CALL add_sp(nv, 2, 0)
+            ELSE
+               nm  = chem_dname_table(id, nv)
+               ltr = LEN_TRIM(nm)
+               IF ( ltr .GT. 0 ) THEN
+                  IF ( nm(ltr:ltr) .EQ. 'j' .OR. nm(ltr:ltr) .EQ. 'J' ) CALL add_sp(nv, 1, 0)
+                  IF ( nm(ltr:ltr) .EQ. 'i' .OR. nm(ltr:ltr) .EQ. 'I' ) CALL add_sp(nv, 4, 0)
+               ENDIF
+            ENDIF
+         ENDDO
+      ENDIF
+
+      DO j = jts, jte
+      DO i = its, ite
+! Rajeswari: rain rate in each layer [mm h-1]
+         anyrain = .FALSE.
+         hcol    = 0.0D0
+         DO k = kts, kte
+            IF ( test ) THEN
+               p_mmh(k) = DBLE(config_flags%rn_wd_test_rain)
+            ELSE
+               p_mmh(k) = MAX( 0.0D0, DBLE(precr(i,k,j))*3600.0D0 )
+            ENDIF
+            IF ( p_mmh(k) .GT. pmin ) THEN
+               anyrain = .TRUE.
+               hcol    = hcol + DBLE(dz8w(i,k,j))
+            ENDIF
+            IF ( .NOT. test .AND. config_flags%rn_wdep_opt .EQ. 1 .AND. qlsink(i,k,j) .GT. 0. ) anyrain = .TRUE.
+         ENDDO
+         IF ( .NOT. anyrain ) CYCLE
+
+         wcar(1:nsp) = 0.0D0
+         DO k = kte, kts, -1
+            rmass = DBLE(dz8w(i,k,j)) / DBLE(alt(i,k,j))     ! Rajeswari: dry-air mass of the layer [kg m-2]
+! Rajeswari: 1. re-evaporation of falling rain between level k+1 and k
+            IF ( reevap .AND. k .LT. kte ) THEN
+               IF ( precr(i,k+1,j) .GT. 0. .AND. precr(i,k,j) .LT. precr(i,k+1,j) ) THEN
+                  fe = DBLE(precr(i,k+1,j) - precr(i,k,j)) / DBLE(precr(i,k+1,j))
+                  fe = MIN( 1.0D0, MAX( 0.0D0, fe ) )
+                  DO n = 1, nsp
+                     IF ( wcar(n) .LE. 0.0D0 ) CYCLE
+                     rel     = fe*wcar(n)
+                     wcar(n) = wcar(n) - rel
+                     chem(i,k,j,isp(n)) = REAL( DBLE(chem(i,k,j,isp(n))) + rel/rmass )
+                  ENDDO
+               ENDIF
+            ENDIF
+! Rajeswari: 2. removal rates of the classes in this layer
+            cloudy = .FALSE.
+            qcl    = 0.0D0
+            IF ( p_qc .GE. param_first_scalar ) qcl = MAX( 0.0D0, DBLE(moist(i,k,j,p_qc)) )
+            IF ( .NOT. test ) THEN
+               IF ( p_qi .GE. param_first_scalar ) THEN
+                  cloudy = qcl + MAX( 0.0D0, DBLE(moist(i,k,j,p_qi)) ) .GT. cld_thresh
+               ELSE
+                  cloudy = qcl .GT. cld_thresh
+               ENDIF
+            ENDIF
+            lamc(:) = 0.0D0
+            tk = DBLE(t_phy(i,k,j))
+            IF ( cloudy ) THEN
+               IF ( config_flags%rn_wdep_opt .EQ. 1 ) THEN
+                  base = MAX( 0.0D0, DBLE(qlsink(i,k,j)) )
+               ELSE IF ( p_mmh(k) .GT. pmin ) THEN
+                  base = a_name * p_mmh(k)**b_name
+               ELSE
+                  base = 0.0D0
+               ENDIF
+               lamc(1) = eps_j * base
+               lamc(6) = lamc(1)
+               lamc(2) = eps_c * base
+               lamc(7) = lamc(2)
+! Rajeswari: iodine gas: dissolved fraction in cloud water, f = H L / (H L + 1/(R T)), Henry's law with
+! Rajeswari: H [mol m-3 Pa-1] = K_H [M atm-1] * 1000/101325 and L = liquid water volume fraction [m3 m-3]
+               heff = kh_i2 * EXP( dhr_i2*(1.0D0/tk - 1.0D0/298.0D0) ) * 9.86923D-3
+               qliq = qcl / DBLE(alt(i,k,j)) / 1000.0D0               ! Rajeswari: kg m-3 / 1000 kg m-3 = m3 m-3
+               faq  = heff*qliq / ( heff*qliq + 1.0D0/(rgas_si*tk) )
+               lamc(3) = faq * base
+            ELSE IF ( p_mmh(k) .GT. pmin ) THEN
+               IF ( config_flags%rn_wdep_opt .EQ. 1 ) THEN
+                  dgn = DBLE(dgnuc(i,k,j)) ; IF ( dgn .LE. 0.0D0 ) dgn = 0.02D-6   ! Rajeswari: fallback before the
+                  dga = DBLE(dgacc(i,k,j)) ; IF ( dga .LE. 0.0D0 ) dga = 0.15D-6   ! Rajeswari: first aerosol step
+                  dgc = DBLE(dgcor(i,k,j)) ; IF ( dgc .LE. 0.0D0 ) dgc = 1.0D-6
+                  lamc(1) = rn_lam_mode(dga*1.0D6, 2.0D0, p_mmh(k), 3)
+                  lamc(2) = rn_lam_mode(dgc*1.0D6, 2.5D0, p_mmh(k), 3)
+                  IF ( config_flags%rn_wdep_host_opt .EQ. 1 ) THEN
+                     lamc(4) = rn_lam_mode(dgn*1.0D6, 1.7D0, p_mmh(k), 3)
+                     lamc(5) = rn_lam_mode(dgn*1.0D6, 1.7D0, p_mmh(k), 0)
+                     lamc(6) = rn_lam_mode(dga*1.0D6, 2.0D0, p_mmh(k), 0)
+                     lamc(7) = rn_lam_mode(dgc*1.0D6, 2.5D0, p_mmh(k), 0)
+                  ENDIF
+               ELSE
+                  lamc(1) = a_name * p_mmh(k)**b_name
+                  lamc(2) = lamc(1) ; lamc(4) = lamc(1) ; lamc(5) = lamc(1) ; lamc(6) = lamc(1) ; lamc(7) = lamc(1)
+               ENDIF
+               lamc(1:2) = lamc(1:2) * DBLE(config_flags%rn_wdep_scale)
+               lamc(4:7) = lamc(4:7) * DBLE(config_flags%rn_wdep_scale)
+! Rajeswari: iodine gas below cloud: Henry-limited washout, L = H' P / H_col  (P in m s-1)
+               heff = kh_i2 * EXP( dhr_i2*(1.0D0/tk - 1.0D0/298.0D0) )
+               hdim = heff * rgas_atm * tk                                   ! Rajeswari: dimensionless H'
+               IF ( hcol .GT. 0.0D0 ) lamc(3) = hdim * (p_mmh(k)/3.6D6) / hcol
+            ENDIF
+! Rajeswari: 3. apply the removal and add the removed activity to the falling rain
+            DO n = 1, nsp
+               lam = lamc(icl(n))
+               IF ( lam .LE. 0.0D0 ) CYCLE
+               f  = 1.0D0 - EXP( -lam*DBLE(dtstep) )
+               dc = f*DBLE(chem(i,k,j,isp(n)))
+               IF ( dc .LE. 0.0D0 ) CYCLE
+               chem(i,k,j,isp(n)) = REAL( DBLE(chem(i,k,j,isp(n))) - dc )
+               wcar(n) = wcar(n) + dc*rmass
+            ENDDO
+         ENDDO
+! Rajeswari: activity reaching the ground = wet deposition [Bq m-2] (radionuclide species only)
+         DO n = 1, nsp
+            SELECT CASE ( idg(n) )
+            CASE (1) ; wd_iodg(i,j)  = wd_iodg(i,j)  + REAL(wcar(n))
+            CASE (2) ; wd_iodaj(i,j) = wd_iodaj(i,j) + REAL(wcar(n))
+            CASE (3) ; wd_iodac(i,j) = wd_iodac(i,j) + REAL(wcar(n))
+            CASE (4) ; wd_csaj(i,j)  = wd_csaj(i,j)  + REAL(wcar(n))
+            CASE (5) ; wd_csac(i,j)  = wd_csac(i,j)  + REAL(wcar(n))
+            END SELECT
+         ENDDO
+      ENDDO
+      ENDDO
+
+   CONTAINS
+
+      SUBROUTINE add_sp(nvx, clx, dgx)
+         INTEGER, INTENT(IN) :: nvx, clx, dgx
+         IF ( nvx .LT. param_first_scalar ) RETURN
+         nsp = nsp + 1
+         isp(nsp) = nvx ; icl(nsp) = clx ; idg(nsp) = dgx
+      END SUBROUTINE add_sp
+
+   END SUBROUTINE rn_wetscav_ls
+
+! Rajeswari: below-cloud scavenging coefficient by rain [s-1], Wang, Zhang and Moran (2014), GMD 7, 799-819,
+! Rajeswari: Eqs. (5)-(7) with the rain constants of Table 8: L = A(d) R**B(d), d = wet diameter [um], R [mm h-1]
+   REAL*8 FUNCTION rn_lam_wang(d_um, r_mmh)
+      IMPLICIT NONE
+      REAL*8, INTENT(IN) :: d_um, r_mmh
+      REAL*8 :: d, r, x, la, bb
+      d = MIN( 100.0D0, MAX( 1.0D-3, d_um ) )
+      r = MIN( 100.0D0, MAX( 1.0D-4, r_mmh ) )
+      x = LOG10(d)
+      IF ( d .LE. 2.0D0 ) THEN
+         la = -6.2609D0 + x*(0.6820D0 + x*(0.8676D0 + x*0.1282D0))
+         bb =  0.7230D0 + 0.0303D0*x
+      ELSE
+         la = -14.707D0 + x*(51.043D0 + x*(-97.306D0 + x*(97.946D0 + x*(-53.923D0 + x*(15.311D0 + x*(-1.7510D0))))))
+         bb = -0.6492D0 + x*(9.3483D0 + x*(-21.929D0 + x*(25.317D0 + x*(-15.395D0 + x*(4.7242D0 + x*(-0.5766D0))))))
+      ENDIF
+      rn_lam_wang = 10.0D0**la * r**bb
+   END FUNCTION rn_lam_wang
+
+! Rajeswari: rn_lam_wang averaged over a lognormal mode (number geometric mean diameter dg_um [um], width sg);
+! Rajeswari: moment = 0 number-weighted, 3 mass-weighted (volume); 40-point midpoint rule over +-4.5 standard
+! Rajeswari: deviations in ln d with Gaussian weights (error < 0.3 % against a dense integration)
+   REAL*8 FUNCTION rn_lam_mode(dg_um, sg, r_mmh, moment)
+      IMPLICIT NONE
+      REAL*8,  INTENT(IN) :: dg_um, sg, r_mmh
+      INTEGER, INTENT(IN) :: moment
+      INTEGER, PARAMETER :: nq = 40
+      REAL*8,  PARAMETER :: zmax = 4.5D0
+      REAL*8 :: ls, mu, z, w, sw, s
+      INTEGER :: q
+      ls = LOG(sg)
+      mu = LOG(dg_um) + DBLE(moment)*ls*ls
+      s  = 0.0D0 ; sw = 0.0D0
+      DO q = 1, nq
+         z  = -zmax + (DBLE(q) - 0.5D0)*2.0D0*zmax/DBLE(nq)
+         w  = EXP(-0.5D0*z*z)
+         s  = s  + w*rn_lam_wang( EXP(mu + ls*z), r_mmh )
+         sw = sw + w
+      ENDDO
+      rn_lam_mode = s/sw
+   END FUNCTION rn_lam_mode
+! ===== added by Rajeswari : END =====
 END MODULE module_input_tracer

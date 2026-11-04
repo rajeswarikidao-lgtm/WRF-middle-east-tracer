@@ -9,6 +9,7 @@ USE module_state_description, only:p_co,p_qv,p_so2,p_hno3,p_hno4,p_n2o5,p_nh3,p_
                               p_bc1,p_bc2,p_oc1,p_oc2,p_seas_1,p_seas_2,     &
                               p_seas_3,p_seas_4,p_dms,                       &
                               p_facd,p_mepx,p_pacd
+USE module_state_description, only:p_iodg,p_iodaj,p_iodac,p_csaj,p_csac   ! Rajeswari: Stage E1
 USE module_state_description, only:p_cvasoaX,p_cvasoa1,p_cvasoa2,p_cvasoa3,p_cvasoa4,&
                               p_cvbsoaX,p_cvbsoa1,p_cvbsoa2,p_cvbsoa3,p_cvbsoa4
 
@@ -84,6 +85,9 @@ CONTAINS
               wd_nh4,wd_oa,                                         &
               wd_so2, wd_sulf, wd_hno3, wd_nh3,                     &
               wd_cvasoa, wd_cvbsoa, wd_asoa, wd_bsoa,               &
+              rn_cv_acc,                                            &
+              rn_wdcv_iodg, rn_wdcv_iodaj, rn_wdcv_iodac,           &
+              rn_wdcv_csaj, rn_wdcv_csac,                           &
               k22_shallow,kbcon_shallow,ktop_shallow,xmb_shallow,   &
               ishallow,num_moist,numgas,num_chem,chemopt,scalaropt, &
               conv_tr_wetscav,conv_tr_aqchem,                       &
@@ -144,6 +148,10 @@ CONTAINS
                                      wd_so2, wd_sulf, wd_hno3, wd_nh3
    REAL, DIMENSION( ims:ime , jms:jme ), INTENT(INOUT) :: &
                                     wd_cvasoa,wd_cvbsoa,wd_asoa,wd_bsoa
+! Rajeswari: Stage E1 - convective wet deposition of the radionuclide species [Bq m-2], accumulated when rn_cv_acc = 1
+   INTEGER, INTENT(IN) :: rn_cv_acc
+   REAL, DIMENSION( ims:ime , jms:jme ), INTENT(INOUT) :: rn_wdcv_iodg, rn_wdcv_iodaj, rn_wdcv_iodac, &
+                                                          rn_wdcv_csaj, rn_wdcv_csac
 ! LOCAL VARS
      real,    dimension (its:ite,kts:kte) ::                    &
         OUTT,OUTQ,OUTQC
@@ -558,6 +566,18 @@ CONTAINS
    wd_bsoa(its:ite,jts:jte)   = wd_bsoa(its:ite,jts:jte)   + wdi_bsoa(its:ite,jts:jte)   ! mmol/m2
    wd_cvasoa(its:ite,jts:jte) = wd_cvasoa(its:ite,jts:jte) + wdi_cvasoa(its:ite,jts:jte) ! mmol/m2
    wd_cvbsoa(its:ite,jts:jte) = wd_cvbsoa(its:ite,jts:jte) + wdi_cvbsoa(its:ite,jts:jte) ! mmol/m2
+
+! ===== added by Rajeswari (Stage E1: convective wet deposition of the radionuclide species) : START =====
+! Rajeswari: wetdep_2d = column wet deposition flux in tracer units * kg m-2 s-1: Bq m-2 s-1 for the particle tags;
+! Rajeswari: for gases the routine divides by mwdry (it assumes ppmv), so iodg (Bq kg-1) is multiplied back
+   if (rn_cv_acc == 1) then
+     if (p_iodaj > 1) rn_wdcv_iodaj(its:ite,jts:jte) = rn_wdcv_iodaj(its:ite,jts:jte) + wetdep_2d(its:ite,jts:jte,p_iodaj)*dt
+     if (p_iodac > 1) rn_wdcv_iodac(its:ite,jts:jte) = rn_wdcv_iodac(its:ite,jts:jte) + wetdep_2d(its:ite,jts:jte,p_iodac)*dt
+     if (p_csaj  > 1) rn_wdcv_csaj(its:ite,jts:jte)  = rn_wdcv_csaj(its:ite,jts:jte)  + wetdep_2d(its:ite,jts:jte,p_csaj)*dt
+     if (p_csac  > 1) rn_wdcv_csac(its:ite,jts:jte)  = rn_wdcv_csac(its:ite,jts:jte)  + wetdep_2d(its:ite,jts:jte,p_csac)*dt
+     if (p_iodg  > 1) rn_wdcv_iodg(its:ite,jts:jte)  = rn_wdcv_iodg(its:ite,jts:jte)  + wetdep_2d(its:ite,jts:jte,p_iodg)*mwdry*dt
+   endif
+! ===== added by Rajeswari : END =====
    
    endif
    
@@ -1604,6 +1624,8 @@ END subroutine cup_env_clev_tr
      ! Gas/aqueous phase partitioning for wet scavenging/deposition of gas
      ! phase and aerosol species:
      real aq_gas_ratio
+     real rn_dens, rn_heff, rn_lwc   ! Rajeswari: Stage E1 - iodg Henry partitioning
+     real, parameter :: rn_kh_i2 = 2.84, rn_dhr_i2 = 4300.   ! Rajeswari: I2 Henry constant [M atm-1], dlnH/d(1/T) [K]
      
      ! I/O for AQCHEM:
      
@@ -1959,7 +1981,8 @@ END subroutine cup_env_clev_tr
       
 ! wet scavenging option (turn off by setting conv_tr_wetscav = 0)
 !
-      if (conv_tr_wetscav == 1) then
+! Rajeswari: Stage E1 - value 2 (set in chem_driver) = scavenge the radionuclide species only
+      if (conv_tr_wetscav >= 1) then
         
         
           tfac = (HL_t0 - t(i,k))/(t(i,k)*HL_t0)
@@ -2056,6 +2079,23 @@ is_moz_chm: if( chemopt == MOZCART_KPP .or. chemopt == T1_MOZCART_KPP .or. &
             endif
 ! ===== added by Rajeswari : END =====
             
+! ===== added by Rajeswari (Stage E1: convective scavenging of the radionuclide species) : START =====
+! Rajeswari: particle tags follow their host mode: iodaj, csaj as so4aj (1.0); iodac, csac as the coarse mode (0.5).
+! Rajeswari: iodg: dissolved fraction H L/(H L + 1/(R T)), H [mol m-3 Pa-1] = K_H [M atm-1]*1000/101325, L = liquid
+! Rajeswari: water volume fraction. conv_tr_wetscav = 2: all other species are not scavenged (base model unchanged).
+            if (chemopt > 0) then
+              if (nv.eq.p_iodaj .or. nv.eq.p_csaj) aq_gas_ratio = 1.0
+              if (nv.eq.p_iodac .or. nv.eq.p_csac) aq_gas_ratio = 0.5
+              if (nv.eq.p_iodg) then
+                rn_dens = 0.1*p(i,k)/t(i,k)*mwdry/8.314472                       ! kg m-3 (p in hPa)
+                rn_lwc  = clw_all(i,k)*rn_dens/1000.                             ! m3 water m-3 air
+                rn_heff = rn_kh_i2*exp(rn_dhr_i2*(1./t(i,k)-1./298.))*9.86923e-3
+                aq_gas_ratio = min(1., max(0., rn_heff*rn_lwc/(rn_heff*rn_lwc + 1./(8.31446*t(i,k)))))
+              endif
+              if (conv_tr_wetscav == 2 .and. nv.ne.p_iodg .and. nv.ne.p_iodaj .and. nv.ne.p_iodac &
+                  .and. nv.ne.p_csaj .and. nv.ne.p_csac) aq_gas_ratio = 0.0
+            endif
+! ===== added by Rajeswari : END =====
             if (aq_gas_ratio > 0.0) then
               tr_c(i,k,nv)  = aq_gas_ratio*tr_up(i,k,nv) ! Amount of species cloud + rain water
               trch          = tr_up(i,k,nv)-tr_c(i,k,nv) ! Amount of species remaining in gas phase

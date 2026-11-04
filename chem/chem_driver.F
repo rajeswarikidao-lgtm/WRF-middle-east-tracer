@@ -44,6 +44,7 @@
   USE module_input_tracer, only: rn_coag_transfer   ! Rajeswari: Stage A2b
   USE module_input_tracer, only: rn_decay           ! Rajeswari: Stage A3
   USE module_input_tracer, only: rn_release         ! Rajeswari: Stage C1
+  USE module_input_tracer, only: rn_wetscav_ls      ! Rajeswari: Stage E2
 ! ===== added by Rajeswari : END =====
   USE module_wetscav_driver, only: wetscav_driver
   USE module_wetdep_ls, only:wetdep_ls
@@ -269,6 +270,7 @@
       INTEGER                         :: ksubt
 ! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
       INTEGER                         :: tr_conv_wetscav
+      INTEGER                         :: rn_cv_wetscav, rn_cv_acc   ! Rajeswari: Stage E1
 ! ===== added by Rajeswari : END =====
 
       REAL :: chem_minval, dtstepc
@@ -1166,6 +1168,15 @@
         DO nv=PARAM_FIRST_SCALAR,num_chem_ct
            chem_old(its:ite,kts:kte,jts:jte,nv) = chem(its:ite,kts:kte,jts:jte,chem_ct_indices(nv))
         ENDDO
+! Rajeswari: Stage E1 - convective wet scavenging of the radionuclide species. With rn_wdep_opt > 0 and the
+! Rajeswari: namelist conv_tr_wetscav = 0 the value 2 scavenges the radionuclides only (base model unchanged);
+! Rajeswari: with conv_tr_wetscav = 1 all species are scavenged as before and the radionuclide deposition is recorded.
+        rn_cv_wetscav = config_flags%conv_tr_wetscav
+        rn_cv_acc     = 0
+        IF ( config_flags%rn_opt == 1 ) THEN
+           IF ( config_flags%rn_wdep_opt > 0 .OR. config_flags%conv_tr_wetscav == 1 ) rn_cv_acc = 1
+           IF ( config_flags%rn_wdep_opt > 0 .AND. config_flags%conv_tr_wetscav == 0 ) rn_cv_wetscav = 2
+        ENDIF
         call grelldrvct(grid%DT,ktau,grid%DX,                                         &
              rho,grid%RAINCV_B,chem,                                                  &
              U_phy,V_phy,t_phy,moist,dz8w,                                            &
@@ -1175,9 +1186,12 @@
              grid%wd_nh4_cu,grid%wd_oa_cu,                                            &
              grid%wd_so2_cu, grid%wd_sulf_cu, grid%wd_hno3_cu, grid%wd_nh3_cu,        &
              grid%wd_cvasoa_cu, grid%wd_cvbsoa_cu, grid%wd_asoa_cu, grid%wd_bsoa_cu,  &
+             rn_cv_acc,                                                               & ! Rajeswari: Stage E1
+             grid%rn_wdcv_iodg, grid%rn_wdcv_iodaj, grid%rn_wdcv_iodac,               &
+             grid%rn_wdcv_csaj, grid%rn_wdcv_csac,                                    &
              grid%k22_shallow,grid%kbcon_shallow,grid%ktop_shallow,grid%xmb_shallow,  &
              config_flags%ishallow,num_moist,numgas,num_chem,config_flags%chem_opt,0, &
-             config_flags%conv_tr_wetscav,config_flags%conv_tr_aqchem,                &
+             rn_cv_wetscav,config_flags%conv_tr_aqchem,                               & ! Rajeswari: Stage E1
              ids,ide, jds,jde, kds,kde,                                               &
              ims,ime, jms,jme, kms,kme,                                               &
              its,ite,jts,jte,kts,k_end)
@@ -1208,6 +1222,9 @@
              grid%wd_nh4_cu,grid%wd_oa_cu,                                            &
              grid%wd_so2_cu, grid%wd_sulf_cu, grid%wd_hno3_cu, grid%wd_nh3_cu,        &
              grid%wd_cvasoa_cu, grid%wd_cvbsoa_cu, grid%wd_asoa_cu, grid%wd_bsoa_cu,  &
+             0,                                                                       & ! Rajeswari: Stage E1 (no accumulation)
+             grid%rn_wdcv_iodg, grid%rn_wdcv_iodaj, grid%rn_wdcv_iodac,               &
+             grid%rn_wdcv_csaj, grid%rn_wdcv_csac,                                    &
              grid%k22_shallow,grid%kbcon_shallow,grid%ktop_shallow,grid%xmb_shallow,  &
              config_flags%ishallow,num_moist,0,num_tracer,0,config_flags%tracer_opt,  &
 ! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
@@ -1610,6 +1627,7 @@ if ( cam_mam_aerosols ) &
               grid%is_CAMMGMP_used,                                                   &
               grid%ph_aer01, grid%ph_aer02, grid%ph_aer03, grid%ph_aer04,             &
               grid%rn_lossjc,                                                         &
+              grid%rn_dgnuc, grid%rn_dgacc, grid%rn_dgcor,                            & ! Rajeswari: Stage E2
               ids,ide, jds,jde, kds,kde,                                              &
               ims,ime, jms,jme, kms,kme,                                              &
               its,ite,jts,jte,kts,kte                                                 )
@@ -1858,6 +1876,14 @@ end if !Chemistry time step check
       IF ( config_flags%rn_coag_opt == 1 .AND. do_chemstep ) THEN
          CALL rn_coag_transfer(chem, num_chem, grid%rn_lossjc, dtstepc,                  &
                  config_flags%rn_coag_factor,                                          &
+                 ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte )
+      ENDIF
+! Rajeswari: (Stage H slot) iodine uptake on coarse particles will be called here, before wet scavenging
+! Rajeswari: Stage E2 - large-scale wet scavenging, every model step (precr and qlsink come from the microphysics)
+      IF ( config_flags%rn_wdep_opt > 0 ) THEN
+         CALL rn_wetscav_ls(chem, num_chem, numgas, moist, num_moist, grid%precr, grid%qlsink, t_phy, rri, dz8w, &
+                 grid%rn_dgnuc, grid%rn_dgacc, grid%rn_dgcor, grid%dt, config_flags, grid%id,                   &
+                 grid%rn_wdls_iodg, grid%rn_wdls_iodaj, grid%rn_wdls_iodac, grid%rn_wdls_csaj, grid%rn_wdls_csac, &
                  ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte )
       ENDIF
    ENDIF
