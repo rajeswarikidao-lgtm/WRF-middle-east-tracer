@@ -45,6 +45,7 @@
   USE module_input_tracer, only: rn_decay           ! Rajeswari: Stage A3
   USE module_input_tracer, only: rn_release         ! Rajeswari: Stage C1
   USE module_input_tracer, only: rn_wetscav_ls      ! Rajeswari: Stage E2
+  USE module_input_tracer, only: rn_uptake          ! Rajeswari: Stage H
 ! ===== added by Rajeswari : END =====
   USE module_wetscav_driver, only: wetscav_driver
   USE module_wetdep_ls, only:wetdep_ls
@@ -1878,7 +1879,13 @@ end if !Chemistry time step check
                  config_flags%rn_coag_factor,                                          &
                  ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte )
       ENDIF
-! Rajeswari: (Stage H slot) iodine uptake on coarse particles will be called here, before wet scavenging
+! Rajeswari: Stage H - uptake of iodine gas on aerosol particles (iodg -> iodac; also -> iodaj with rn_upt_opt = 2),
+! Rajeswari: on chemistry steps with the chemistry time step, after coagulation and before wet scavenging
+      IF ( config_flags%rn_upt_opt > 0 .AND. do_chemstep ) THEN
+         CALL rn_uptake(chem, num_chem, t_phy, p_phy, rri, dz8w, grid%rn_dgacc, grid%rn_dgcor, dtstepc,      &
+                 config_flags, grid%rn_kupt, grid%rn_upt_iodj, grid%rn_upt_iodc,                           &
+                 ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte )
+      ENDIF
 ! Rajeswari: Stage E2 - large-scale wet scavenging, every model step (precr and qlsink come from the microphysics)
       IF ( config_flags%rn_wdep_opt > 0 ) THEN
          CALL rn_wetscav_ls(chem, num_chem, numgas, moist, num_moist, grid%precr, grid%qlsink, t_phy, rri, dz8w, &

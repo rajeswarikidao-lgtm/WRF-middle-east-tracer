@@ -2346,6 +2346,10 @@ state   real   rn_vsetc       ikj   misc   1   -   rh   "rn_vsetc"       "coarse
 state   real   rn_dgnuc       ikj   misc   1   -   rh   "rn_dgnuc"       "Aitken mode geometric mean diameter (MADE)"          "m"
 state   real   rn_dgacc       ikj   misc   1   -   rh   "rn_dgacc"       "accumulation mode wet geometric mean diameter (MADE)" "m"
 state   real   rn_dgcor       ikj   misc   1   -   rh   "rn_dgcor"       "coarse mode geometric mean diameter (MADE, dry)"     "m"
+# Rajeswari: Stage H - uptake of iodine gas on aerosol particles: rate of the last chemistry step, column transfers
+state   real   rn_kupt        ikj   misc   1   -   rh   "rn_kupt"        "uptake rate of iodg on aerosol particles"           "s-1"
+state   real   rn_upt_iodj    ij    misc   1   -   rh   "rn_upt_iodj"    "accumulated uptake iodg to iodaj (column)"          "Bq m-2"
+state   real   rn_upt_iodc    ij    misc   1   -   rh   "rn_upt_iodc"    "accumulated uptake iodg to iodac (column)"          "Bq m-2"
 state   real   rn_ddep_iodg   ij    misc   1   -   rh   "rn_ddep_iodg"   "accumulated dry deposition of iodg"                 "Bq m-2"
 state   real   rn_ddep_iodaj  ij    misc   1   -   rh   "rn_ddep_iodaj"  "accumulated dry deposition of iodaj"                "Bq m-2"
 state   real   rn_ddep_iodac  ij    misc   1   -   rh   "rn_ddep_iodac"  "accumulated dry deposition of iodac"                "Bq m-2"
@@ -4245,7 +4249,7 @@ rconfig   real      rn_coag_factor     namelist,chem   max_domains   1.0    rh  
 rconfig   real      rn_iod_frac_part   namelist,chem   max_domains   0.19   rh   "rn_iod_frac_part"   "fraction of released I-131 put in iodaj"       ""
 rconfig   integer   rn_settle_opt      namelist,chem   max_domains   0      rh   "rn_settle_opt"      "coarse mode settling 0=off 1=on"               ""
 rconfig   real      rn_iodg_vd         namelist,chem   max_domains   0.     rh   "rn_iodg_vd"         "iodg dry deposition velocity"                  "m s-1"
-rconfig   real      rn_init_aj         namelist,chem   max_domains   0.     rh   "rn_init_aj"         "uniform initial iodaj and csaj for tests"      "Bq kg-1"
+rconfig   real      rn_init_aj         namelist,chem   max_domains   0.     rh   "rn_init_aj"         "uniform initial iodg, iodaj and csaj for tests"      "Bq kg-1"
 # Rajeswari: Stage C2 - switch for dry deposition of the particle tags only (default 1 = as in Stage B)
 rconfig   integer   rn_aer_ddep_opt    namelist,chem   max_domains   1      rh   "rn_aer_ddep_opt"    "dry deposition of the radionuclide particle tags 0=off 1=on"   ""
 # Rajeswari: Stage C3 - iodg dry deposition: 0 off, 1 constant rn_iodg_vd, 2 resistance model 1/(ra+rb+rn_iodg_rc)
@@ -4258,6 +4262,9 @@ rconfig   integer   rn_wdep_opt        namelist,chem   max_domains   0     rh   
 rconfig   real      rn_wdep_scale      namelist,chem   max_domains   1.0   rh   "rn_wdep_scale"      "multiplier on the below-cloud washout coefficient (sensitivity)"   ""
 rconfig   integer   rn_wdep_host_opt   namelist,chem   max_domains   0     rh   "rn_wdep_host_opt"   "large-scale wet scavenging of the host MADE aerosol too 0=off 1=on"   ""
 rconfig   real      rn_wd_test_rain    namelist,chem   max_domains   0.    rh   "rn_wd_test_rain"    "test only: uniform rain rate in every layer, 0=model rain"   "mm h-1"
+# Rajeswari: Stage H - uptake of iodine gas on aerosol particles (off by default); diffusivity from rn_iodg_dvj
+rconfig   integer   rn_upt_opt         namelist,chem   max_domains   0      rh   "rn_upt_opt"         "iodg uptake on particles 0=off 1=coarse 2=coarse+accumulation"   ""
+rconfig   real      rn_upt_gamma       namelist,chem   max_domains   1.0e-3 rh   "rn_upt_gamma"       "uptake coefficient of iodg on particles (both modes)"   ""
 
 # the following arrays only needed for aircraft emissions options
 package   aircraft1      aircraft_emiss_opt==1             -       emis_aircraft:eac_no,eac_co,eac_so2,eac_ch4

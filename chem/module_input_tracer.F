@@ -1059,4 +1059,121 @@ CONTAINS
       rn_lam_mode = s/sw
    END FUNCTION rn_lam_mode
 ! ===== added by Rajeswari : END =====
+
+! ===== added by Rajeswari (radionuclide species, Stage H: uptake of iodine gas on aerosol particles) : START =====
+! Rajeswari: moves I-131 activity from the gas (iodg) to the particle tags on chemistry steps:
+! Rajeswari:   rn_upt_opt = 1: coarse mode only -> iodac;  2: coarse -> iodac and accumulation -> iodaj
+! Rajeswari: first-order rate per mode, k_m = N_m < k1(d) >, Fuchs-Sutugin rate of one particle
+! Rajeswari:   k1(d) = 2 pi d D_g F(Kn, gamma),  F = (1+Kn) / (1 + (4/(3 gamma) + 0.377) Kn + 4/(3 gamma) Kn**2)
+! Rajeswari:   Kn = 2 lambda / d,  lambda = 3 D_g / vbar  (Seinfeld and Pandis 2016, ch. 12; Jacob 2000)
+! Rajeswari: kinetic limit k1 -> gamma vbar pi d**2 / 4; diffusion limit (gamma = 1, large d) k1 -> 2 pi d D_g
+! Rajeswari: transfer over the chemistry step: dA = A_g [1 - exp(-k dt)], k = k_j + k_c, split k_j/k and k_c/k
+! Rajeswari: host aerosol not changed (radionuclide mass is negligible); same gamma for both modes
+   SUBROUTINE rn_uptake(chem, num_chem, t_phy, p_phy, alt, dz8w, dgacc, dgcor, dtstep, config_flags, &
+                 kupt, upt_iodj, upt_iodc,                                                        &
+                 ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte )
+      USE module_configure, only: grid_config_rec_type
+      USE module_state_description, only: p_iodg, p_iodaj, p_iodac, p_ac0, p_corn, param_first_scalar
+      IMPLICIT NONE
+      TYPE(grid_config_rec_type), INTENT(IN) :: config_flags
+      INTEGER, INTENT(IN) :: num_chem
+      INTEGER, INTENT(IN) :: ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte
+      REAL, DIMENSION(ims:ime,kms:kme,jms:jme,num_chem), INTENT(INOUT) :: chem
+      REAL, DIMENSION(ims:ime,kms:kme,jms:jme),          INTENT(IN)    :: t_phy, p_phy, alt, dz8w, dgacc, dgcor
+      REAL, DIMENSION(ims:ime,kms:kme,jms:jme),          INTENT(INOUT) :: kupt
+      REAL, DIMENSION(ims:ime,jms:jme),                  INTENT(INOUT) :: upt_iodj, upt_iodc
+      REAL, INTENT(IN) :: dtstep
+
+      REAL*8, PARAMETER :: pi = 3.14159265358979D0
+      REAL*8, PARAMETER :: rgas = 8.31446D0          ! Rajeswari: gas constant [J mol-1 K-1]
+      REAL*8, PARAMETER :: mw_i2 = 0.25381D0         ! Rajeswari: molar mass of I2 [kg mol-1]
+      REAL*8, PARAMETER :: sg_acc = 2.0D0, sg_cor = 2.5D0   ! Rajeswari: MADE geometric standard deviations
+      INTEGER :: i, k, j, opt
+      REAL*8  :: gam, tk, pa, vbar, dgas, nn, kj, kc, kt, x, f, da, rmass
+
+      kupt(its:ite,kts:kte,jts:jte) = 0.
+      opt = config_flags%rn_upt_opt
+      gam = DBLE(config_flags%rn_upt_gamma)
+      IF ( opt .LE. 0 .OR. gam .LE. 0.0D0 ) RETURN
+      IF ( p_iodg .LT. param_first_scalar .OR. p_iodaj .LT. param_first_scalar .OR. &
+           p_iodac .LT. param_first_scalar .OR. p_corn  .LT. param_first_scalar .OR. &
+           p_ac0   .LT. param_first_scalar ) RETURN
+      gam = MIN( 1.0D0, gam )
+
+      DO j = jts, jte
+      DO k = kts, kte
+      DO i = its, ite
+         tk   = DBLE(t_phy(i,k,j))
+         pa   = DBLE(p_phy(i,k,j))
+         IF ( tk .LE. 0.0D0 .OR. pa .LE. 0.0D0 ) CYCLE
+         vbar = SQRT( 8.0D0*rgas*tk/(pi*mw_i2) )                                  ! Rajeswari: [m s-1]
+! Rajeswari: I2 diffusivity [m2 s-1], rn_iodg_dvj [cm2 s-1] at 298 K and 1013.25 hPa, scaled as T**1.75 / p
+         dgas = DBLE(config_flags%rn_iodg_dvj)*1.0D-4 * (tk/298.0D0)**1.75D0 * (101325.0D0/pa)
+! Rajeswari: coarse mode (number [# kg-1] / alt [m3 kg-1] = # m-3; dry diameter [m])
+         kc = 0.0D0
+         nn = DBLE(chem(i,k,j,p_corn)) / DBLE(alt(i,k,j))
+         IF ( nn .GT. 0.0D0 .AND. dgcor(i,k,j) .GT. 0. ) &
+            kc = rn_kfs_mode(nn, DBLE(dgcor(i,k,j)), sg_cor, dgas, vbar, gam)
+! Rajeswari: accumulation mode (wet diameter), option 2 only
+         kj = 0.0D0
+         IF ( opt .EQ. 2 ) THEN
+            nn = DBLE(chem(i,k,j,p_ac0)) / DBLE(alt(i,k,j))
+            IF ( nn .GT. 0.0D0 .AND. dgacc(i,k,j) .GT. 0. ) &
+               kj = rn_kfs_mode(nn, DBLE(dgacc(i,k,j)), sg_acc, dgas, vbar, gam)
+         ENDIF
+         kt = kj + kc
+         kupt(i,k,j) = REAL(kt)
+         IF ( kt .LE. 0.0D0 ) CYCLE
+! Rajeswari: fraction moved in this step; series form keeps full accuracy for very small k dt
+         x = kt*DBLE(dtstep)
+         IF ( x .LT. 1.0D-5 ) THEN
+            f = x*(1.0D0 - 0.5D0*x)
+         ELSE
+            f = 1.0D0 - EXP(-x)
+         ENDIF
+         da = f*DBLE(chem(i,k,j,p_iodg))
+         IF ( da .LE. 0.0D0 ) CYCLE
+         chem(i,k,j,p_iodg)  = REAL( DBLE(chem(i,k,j,p_iodg))  - da )
+         chem(i,k,j,p_iodaj) = REAL( DBLE(chem(i,k,j,p_iodaj)) + da*kj/kt )
+         chem(i,k,j,p_iodac) = REAL( DBLE(chem(i,k,j,p_iodac)) + da*kc/kt )
+! Rajeswari: column transfer diagnostics [Bq m-2]; dry-air mass of the layer = dz / alt [kg m-2]
+         rmass = DBLE(dz8w(i,k,j)) / DBLE(alt(i,k,j))
+         upt_iodj(i,j) = upt_iodj(i,j) + REAL( da*kj/kt*rmass )
+         upt_iodc(i,j) = upt_iodc(i,j) + REAL( da*kc/kt*rmass )
+      ENDDO
+      ENDDO
+      ENDDO
+   END SUBROUTINE rn_uptake
+
+! Rajeswari: uptake rate [s-1] of a gas on a lognormal mode: N [# m-3], number median diameter dg [m], width sg,
+! Rajeswari: gas diffusivity dgas [m2 s-1], mean molecular speed vbar [m s-1], uptake coefficient gam.
+! Rajeswari: k = N < k1(d) >, written as k = N dg**2 exp(2 ln**2 sg) < k1(d)/d**2 >_s, the average taken over the
+! Rajeswari: surface-weighted distribution (lognormal, median ln dg + 2 ln**2 sg); 40-point midpoint rule over
+! Rajeswari: +-4.5 standard deviations, as rn_lam_mode. Exact in the kinetic limit, where k1/d**2 is constant.
+   REAL*8 FUNCTION rn_kfs_mode(nn, dg, sg, dgas, vbar, gam)
+      IMPLICIT NONE
+      REAL*8, INTENT(IN) :: nn, dg, sg, dgas, vbar, gam
+      REAL*8,  PARAMETER :: pi = 3.14159265358979D0
+      INTEGER, PARAMETER :: nq = 40
+      REAL*8,  PARAMETER :: zmax = 4.5D0
+      REAL*8  :: ls, mu, z, w, sw, s, d, lam, kn, fs
+      INTEGER :: q
+      rn_kfs_mode = 0.0D0
+      IF ( nn .LE. 0.0D0 .OR. dg .LE. 0.0D0 .OR. gam .LE. 0.0D0 ) RETURN
+      ls  = LOG( MAX(sg, 1.0D0 + 1.0D-6) )
+      mu  = LOG(dg) + 2.0D0*ls*ls
+      lam = 3.0D0*dgas/vbar
+      s = 0.0D0 ; sw = 0.0D0
+      DO q = 1, nq
+         z  = -zmax + (DBLE(q) - 0.5D0)*2.0D0*zmax/DBLE(nq)
+         w  = EXP(-0.5D0*z*z)
+         d  = EXP(mu + ls*z)
+         kn = 2.0D0*lam/d
+         fs = (1.0D0 + kn) / (1.0D0 + (4.0D0/(3.0D0*gam) + 0.377D0)*kn + 4.0D0/(3.0D0*gam)*kn*kn)
+         s  = s  + w*(2.0D0*pi*d*dgas*fs)/(d*d)
+         sw = sw + w
+      ENDDO
+      rn_kfs_mode = nn * dg*dg*EXP(2.0D0*ls*ls) * s/sw
+   END FUNCTION rn_kfs_mode
+! ===== added by Rajeswari : END =====
 END MODULE module_input_tracer
