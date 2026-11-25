@@ -672,13 +672,14 @@ CONTAINS
 ! ===== added by Rajeswari (radionuclide species, Stage C2) : START =====
 ! Rajeswari: iodg dry deposition velocity (applied only when gas dry deposition is on, like every other gas):
 ! Rajeswari:   rn_iodg_ddep_opt = 1: prescribed constant rn_iodg_vd [m s-1] (Stage C2)
-! Rajeswari:   rn_iodg_ddep_opt = 2: Wesely resistance model 1/(r_a + r_b + rn_iodg_rc), computed in module_dep_simple (Stage C3)
+! Rajeswari:   rn_iodg_ddep_opt = 2: Wesely resistance model 1/(r_a + r_b + rn_iodg_rc), uniform r_c (Stage C3)
+! Rajeswari:   rn_iodg_ddep_opt = 3: Wesely resistance model with land r_c vs two-film air-sea r_c_sea
 ! Rajeswari:   otherwise: no iodg dry deposition
    IF ( config_flags%rn_opt == 1 .AND. config_flags%gas_drydep_opt > 0 .AND. p_iodg >= param_first_scalar ) THEN
       SELECT CASE ( config_flags%rn_iodg_ddep_opt )
       CASE (1)
          ddvel(:,:,p_iodg) = MAX( config_flags%rn_iodg_vd, 0. )
-      CASE (2)
+      CASE (2, 3)
          ! Rajeswari: keep the velocity computed by the Wesely routine
       CASE DEFAULT
          ddvel(:,:,p_iodg) = 0.
@@ -865,9 +866,9 @@ CONTAINS
 ! ===== added by Rajeswari (radionuclide species, Stage C2) : START =====
 ! Rajeswari: iodg is a gas: ddmassn is in 'mol m-2' (ppmv * 1e-6 * rho_dry/(mwdry*1e-3) * dz); removing the
 ! Rajeswari: ppmv-to-mol factor gives the activity column loss: Bq kg-1 * rho_dry * dz = Bq m-2
-! Rajeswari: Stage C3 guard - accumulate only if iodg deposition is on (opt 2, or opt 1 with rn_iodg_vd > 0)
+! Rajeswari: Stage C3 guard - accumulate only if iodg deposition is on (opt 2 or 3, or opt 1 with rn_iodg_vd > 0)
       IF ( config_flags%rn_opt == 1 .AND. p_iodg >= param_first_scalar .AND. config_flags%gas_drydep_opt > 0 &
-           .AND. ( config_flags%rn_iodg_ddep_opt == 2 .OR.                                               &
+           .AND. ( config_flags%rn_iodg_ddep_opt == 2 .OR. config_flags%rn_iodg_ddep_opt == 3 .OR.      &
                   (config_flags%rn_iodg_ddep_opt == 1 .AND. config_flags%rn_iodg_vd > 0.) ) ) THEN
          rn_ddep_iodg(i,j) = rn_ddep_iodg(i,j) + ddmassn(p_iodg) * (mwdry*1.e-3) / 1.e-6
       ENDIF

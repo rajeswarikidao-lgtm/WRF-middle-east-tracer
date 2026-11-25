@@ -550,7 +550,8 @@ CONTAINS
       INTEGER, INTENT(IN) :: num_tracer
       INTEGER, INTENT(IN) :: ims,ime, jms,jme, kms,kme
       INTEGER, INTENT(IN) :: its,ite, jts,jte, kts,kte
-      REAL,    INTENT(IN) :: dtstep, curr_secs, dx, dy
+      REAL,    INTENT(IN) :: dtstep, dx, dy
+      REAL*8,  INTENT(IN) :: curr_secs
       REAL,    INTENT(IN) :: hl1, prate1, pst1, pend1, crate1, cst1
       REAL,    INTENT(IN) :: hl2, prate2, pst2, pend2, crate2, cst2
       INTEGER, INTENT(IN) :: i1, j1, k1, i2, j2, k2
@@ -559,7 +560,7 @@ CONTAINS
       REAL, DIMENSION(ims:ime,jms:jme),                    INTENT(IN)    :: msftx, msfty
       REAL :: t_hours
 
-      t_hours = curr_secs / 3600.
+      t_hours = REAL(curr_secs / 3600.0D0)
 #if ( WRF_CHEM == 1 )
       CALL decay_and_release(p_isotope1, hl1, i1, j1, k1, prate1, pst1, pend1, crate1, cst1)
       CALL decay_and_release(p_isotope2, hl2, i2, j2, k2, prate2, pst2, pend2, crate2, cst2)
@@ -578,7 +579,7 @@ CONTAINS
 !-- (1) radioactive decay
 ! Rajeswari: Stage A3 - quantised, double-precision decay factor shared with the chem species (rn_decay_factor);
 ! Rajeswari: the earlier per-step single-precision factor rounded to 1.0 for Cs-137 (dt=30 s); hl<=0 = no decay
-         rn_fdec = rn_decay_factor(hl, DBLE(curr_secs), DBLE(dtstep))
+         rn_fdec = rn_decay_factor(hl, curr_secs + DBLE(dtstep), DBLE(dtstep))
          IF (rn_fdec .lt. 1.0D0) THEN
             tracer(its:ite,kts:kte,jts:jte,ip) = REAL( DBLE(tracer(its:ite,kts:kte,jts:jte,ip)) * rn_fdec )
          ENDIF
@@ -743,7 +744,8 @@ CONTAINS
       REAL, DIMENSION(ims:ime,kms:kme,jms:jme,num_chem), INTENT(INOUT) :: chem
       REAL, DIMENSION(ims:ime,kms:kme,jms:jme),          INTENT(IN)    :: alt, dz8w
       REAL, DIMENSION(ims:ime,jms:jme),                  INTENT(IN)    :: msftx, msfty
-      REAL,    INTENT(IN) :: dtstep, curr_secs, dx, dy, f_part
+      REAL,    INTENT(IN) :: dtstep, dx, dy, f_part
+      REAL*8,  INTENT(IN) :: curr_secs
       REAL,    INTENT(IN) :: prate1, pst1, pend1, crate1, cst1
       REAL,    INTENT(IN) :: prate2, pst2, pend2, crate2, cst2
       INTEGER, INTENT(IN) :: i1, j1, k1, i2, j2, k2
@@ -753,7 +755,7 @@ CONTAINS
       IF ( p_iodg .LT. param_first_scalar .OR. p_iodaj .LT. param_first_scalar .OR. &
            p_csaj .LT. param_first_scalar ) RETURN
 
-      t_hours = curr_secs / 3600.
+      t_hours = REAL(curr_secs / 3600.0D0)
       fp = MIN( MAX(f_part, 0.), 1. )      ! Rajeswari: particulate fraction limited to [0,1]
 
 ! Rajeswari: I-131

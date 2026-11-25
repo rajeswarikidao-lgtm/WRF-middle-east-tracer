@@ -1832,7 +1832,7 @@ end if !Chemistry time step check
 ! ===== added by Rajeswari (tracer_opt=11 isotope tracers) : START =====
     CASE (ISOTOPE_TRACER)
        CALL wrf_debug(15,'tracer mode: isotope decay + point-source release')
-       call set_isotope_tracer(grid%dt, real(curr_secs), tracer, num_tracer,         &
+       call set_isotope_tracer(grid%dt, curr_secs, tracer, num_tracer,               &
               rri, dz8w, grid%dx, grid%dy, grid%msftx, grid%msfty,                   &
               config_flags%iso1_half_life_h, config_flags%iso1_i,                    &
               config_flags%iso1_j, config_flags%iso1_k,                              &
@@ -1857,12 +1857,13 @@ end if !Chemistry time step check
          chem(its:ite,kts:kte,jts:jte,p_iodg)  = config_flags%rn_init_aj   ! Rajeswari: Stage A3 test
       ENDIF
 ! Rajeswari: Stage A3 - radioactive decay every model step; I-131 uses iso1_half_life_h, Cs-137 iso2_half_life_h [h]; <=0 = off
+! Operational fix: pass exact REAL*8 elapsed time at end of step (curr_secs + dt) so adaptive_time_step and restarts stay exact
       CALL rn_decay(chem, num_chem, config_flags%iso1_half_life_h, config_flags%iso2_half_life_h, &
-              DBLE(ktau)*DBLE(grid%dt), DBLE(grid%dt),                                    &
+              curr_secs + DBLE(grid%dt), DBLE(grid%dt),                                     &
               ims,ime, jms,jme, kms,kme, its,ite, jts,jte, kts,kte )
 ! Rajeswari: Stage C1 - point-source release every model step, after the decay as in the tracer_opt=11 release;
 ! Rajeswari: I-131 (iso1_*): rn_iod_frac_part into iodaj, the rest into iodg;  Cs-137 (iso2_*): all into csaj
-      CALL rn_release(chem, num_chem, grid%dt, real(curr_secs), rri, dz8w, grid%dx, grid%dy,   &
+      CALL rn_release(chem, num_chem, grid%dt, curr_secs, rri, dz8w, grid%dx, grid%dy,        &
               grid%msftx, grid%msfty, config_flags%rn_iod_frac_part,                         &
               config_flags%iso1_i, config_flags%iso1_j, config_flags%iso1_k,                 &
               config_flags%iso1_pulse_rate, config_flags%iso1_pulse_start_h,                 &

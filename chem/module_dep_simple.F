@@ -145,8 +145,9 @@ SUBROUTINE wesely_driver( id, ktau, dtstep, config_flags, current_month,  &
 !--------------------------------------------------
       REAL    ::  clwchem, dvfog, dvpart, pa, rad, dep_vap
       REAL    ::  rhchem, ta, ustar, vegfrac, z1, zntt
+      REAL*8  ::  rn_u10, rn_tk, rn_tc, rn_hdim, rn_scw, rn_kw, rn_alpha
       INTEGER :: i, iland, iprt, iseason, j, jce, jcs, n, nr, ipr,jpr,nvr
-      LOGICAL :: highnh3, rainflag, vegflag, wetflag
+      LOGICAL :: highnh3, rainflag, vegflag, wetflag, rn_is_water
       LOGICAL :: chm_is_moz
 !--------------------------------------------------
 ! .. Local Arrays
@@ -247,8 +248,31 @@ tile_lon_loop : &
             end if
 ! ===== added by Rajeswari (radionuclide species, Stage C3) : START =====
 ! Rajeswari: option B: prescribed surface resistance of iodine gas; landusevg then gives v_d = 1/(r_a + r_b + r_c)
-            IF ( config_flags%rn_opt == 1 .AND. config_flags%rn_iodg_ddep_opt == 2 .AND. &
-                 p_iodg >= param_first_scalar ) srfres(p_iodg) = config_flags%rn_iodg_rc
+            IF ( config_flags%rn_opt == 1 .AND. p_iodg >= param_first_scalar ) THEN
+               IF ( config_flags%rn_iodg_ddep_opt == 2 ) THEN
+                  srfres(p_iodg) = config_flags%rn_iodg_rc
+               ELSE IF ( config_flags%rn_iodg_ddep_opt == 3 ) THEN
+                  rn_is_water = ( iland == iswater_temp ) .OR. ( ivgtyp(i,j) == config_flags%iswater ) &
+                                .OR. ( config_flags%islake > 0 .AND. ivgtyp(i,j) == config_flags%islake )
+                  IF ( rn_is_water ) THEN
+                     IF ( config_flags%rn_iodg_rc_sea > 0. ) THEN
+                        srfres(p_iodg) = config_flags%rn_iodg_rc_sea
+                     ELSE
+                        rn_u10   = MIN( 40.0D0, MAX( 0.5D0, (DBLE(ustar) / 0.40D0) * LOG(10.0D0 / MAX(DBLE(zntt), 1.0D-6)) ) )
+                        rn_tk    = MAX( DBLE(ta), 250.0D0 )
+                        rn_tc    = MIN( 40.0D0, MAX( 0.0D0, rn_tk - 273.15D0 ) )
+                        rn_hdim  = 2.84D0 * EXP( 4300.0D0 * (1.0D0/rn_tk - 1.0D0/298.15D0) ) * 0.082057D0 * rn_tk
+                        rn_scw   = MAX( 200.0D0, 1.37D0 * (2116.8D0 + rn_tc * (-136.25D0 + rn_tc * (4.7353D0 &
+                                   + rn_tc * (-0.092307D0 + rn_tc * 0.0007555D0)))) )
+                        rn_kw    = ((1.0D0 + 0.251D0 * rn_u10 * rn_u10) * SQRT(660.0D0 / rn_scw)) / 360000.0D0
+                        rn_alpha = MAX( DBLE(config_flags%rn_iodg_sea_alpha), 1.0D-3 )
+                        srfres(p_iodg) = REAL( MIN( 1.0D5, MAX( 10.0D0, 1.0D0 / (rn_alpha * rn_hdim * rn_kw) ) ) )
+                     ENDIF
+                  ELSE
+                     srfres(p_iodg) = config_flags%rn_iodg_rc
+                  ENDIF
+               ENDIF
+            ENDIF
 ! ===== added by Rajeswari : END =====
             CALL deppart( rmol(i,j), ustar, rhchem, clwchem, iland, dvpart, dvfog )
             ddvel0d(1:numgas) = 0.

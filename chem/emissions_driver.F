@@ -105,7 +105,11 @@ CONTAINS
   USE module_add_emiss_burn
   USE module_plumerise1
   USE module_aerosols_sorgam_vbs, only: sorgam_vbs_addemiss
-  USE module_aerosols_soa_vbs, only: soa_vbs_addemiss
+
+  !USE module_aerosols_soa_vbs, only: soa_vbs_addemiss
+  ! osipov. Temporary route to the corrected dust emission config. Yijiang found this bug (emissions were pointing to the original unmodified dust emission routine)
+  USE module_aerosols_soa_vbs_het, only: soa_vbs_addemiss
+
   USE module_ghg_fluxes
   USE module_lightning_nox_driver
   USE module_cam_mam_addemiss, only: cam_mam_addemiss
